@@ -100,7 +100,7 @@ class Launcher {
     string launcherLog = Path.Combine(logDir, "dependency_check_launcher.log");
 
     if (!File.Exists(checkScript)) {
-      MessageBox.Show("Cannot find check_dependencies.R next to the launcher.\n\nThe app was not started.", "ProteoDIAPostZ Formal Release V1.3");
+      MessageBox.Show("Cannot find check_dependencies.R next to the launcher.\n\nThe app was not started.", "ProteoDIAPostZ Formal V1.4");
       return false;
     }
 
@@ -123,9 +123,9 @@ class Launcher {
         if (missingSystem.Length > 0) message += "\n\nThese system/base dependencies are not suitable for automatic installation and must be fixed manually:\n" + missingSystem;
         message += "\n\nDo you want to try installing the missing CRAN/Bioconductor R packages into this app's portable R library now?\n\nNo global user R library will be used intentionally. Network access is required.";
 
-        DialogResult choice = MessageBox.Show(message, "ProteoDIAPostZ Formal Release V1.3", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        DialogResult choice = MessageBox.Show(message, "ProteoDIAPostZ Formal V1.4", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
         if (choice != DialogResult.Yes) {
-          MessageBox.Show("Startup stopped because dependency installation was canceled. No packages were installed.", "ProteoDIAPostZ Formal Release V1.3");
+          MessageBox.Show("Startup stopped because dependency installation was canceled. No packages were installed.", "ProteoDIAPostZ Formal V1.4");
           return false;
         }
 
@@ -139,20 +139,20 @@ class Launcher {
           "The missing R packages could not be installed. The app was not started.\n\n" +
           installError +
           "\n\nPlease check your network connection and logs\\dependency_install.log.",
-          "ProteoDIAPostZ Formal Release V1.3");
+          "ProteoDIAPostZ Formal V1.4");
         return false;
       }
 
       MessageBox.Show(
         "The app cannot start because the startup dependency check failed.\n\nDetails were written to logs\\dependency_check.log and logs\\dependency_check_launcher.log.",
-        "ProteoDIAPostZ Formal Release V1.3");
+        "ProteoDIAPostZ Formal V1.4");
       return false;
     } catch (Exception ex) {
       try { File.AppendAllText(launcherLog, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " Dependency check failed: " + ex.Message + Environment.NewLine); } catch { }
       MessageBox.Show(
         "The app cannot start because the startup dependency check could not run:\n" +
         ex.Message,
-        "ProteoDIAPostZ Formal Release V1.3");
+        "ProteoDIAPostZ Formal V1.4");
       return false;
     }
   }
@@ -168,7 +168,7 @@ class Launcher {
     string stderrLog = Path.Combine(root, "shiny_stderr.log");
 
     if (!File.Exists(appScript)) {
-      MessageBox.Show("Cannot find run_app.R next to the launcher.", "ProteoDIAPostZ Formal Release V1.3");
+      MessageBox.Show("Cannot find run_app.R next to the launcher.", "ProteoDIAPostZ Formal V1.4");
       return;
     }
 
@@ -201,7 +201,7 @@ class Launcher {
 
       OpenBrowser();
     } catch (Exception ex) {
-      MessageBox.Show("Failed to start the app:\n" + ex.Message + "\n\nPlease open " + Url + " manually if the app is already running.", "ProteoDIAPostZ Formal Release V1.3");
+      MessageBox.Show("Failed to start the app:\n" + ex.Message + "\n\nPlease open " + Url + " manually if the app is already running.", "ProteoDIAPostZ Formal V1.4");
     }
   }
 }

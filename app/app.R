@@ -1,4 +1,4 @@
-# ProteoDIAPostZ 正式版 V1.3
+# ProteoDIAPostZ Formal Release V1.4
 # Developed by Wenjia Zhang
 
 options(shiny.maxRequestSize = 1024^3)
@@ -10,7 +10,7 @@ library(dplyr)
 source(file.path("R", "analysis_core.R"), encoding = "UTF-8")
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
-app_version <- "正式版 V1.3"
+app_version <- "Formal V1.4"
 app_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 package_root <- normalizePath(file.path(app_root, ".."), winslash = "/", mustWork = FALSE)
 annotation_dir <- file.path(app_root, "annotations")
@@ -39,17 +39,30 @@ feature_source_choices <- c(
   "RF + L1 selected proteins" = "rfl1",
   "All available ML selected proteins / union" = "union"
 )
+input_source_choices <- c("DIA-NN" = "diann", "Spectronaut" = "spectronaut", "Standard quantitative matrix" = "standard_matrix")
+standard_zero_mode_choices <- c(
+  "Please select how zero should be interpreted" = "",
+  "0 is a valid quantitative value" = "zero_is_value",
+  "0 represents missing or unquantified" = "zero_is_missing"
+)
 
 app_css <- "
 body, .form-control, .selectize-input, .btn, table { font-family: 'Microsoft YaHei', Arial, sans-serif; }
 .en, .brand { font-family: Arial, sans-serif; }
-.brand { font-style: italic; color: #555; font-size: 13px; }
+.sidebar { overflow: hidden !important; padding-bottom: 0; }
+.sidebar .sidebar-content { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.sidebar-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.sidebar-fixed { flex: 0 0 auto; padding-top: 12px; border-top: 1px solid #d2d6da; background: transparent; }
+.sidebar-fixed .form-group { margin-bottom: 10px; }
+.brand { padding-top: 10px; margin-top: 12px; border-top: 1px solid #d2d6da; background: transparent; font-style: italic; color: #555; font-size: 13px; }
 .brand .developer-name { font-family: 'Segoe Script', 'Brush Script MT', 'Lucida Handwriting', cursive; font-size: 16px; color: #3b4b54; }
 .brand .institution-cn, .brand .lab-line { font-family: 'Microsoft YaHei', Arial, sans-serif; font-style: normal; color: #263942; font-size: 13px; font-weight: 650; margin-top: 4px; }
-.brand .institution-en { font-family: Arial, sans-serif; font-style: normal; color: #40515c; font-size: 12px; margin-top: 2px; }
+.brand .institution-en, .brand .lab-line-en { font-family: Arial, sans-serif; font-style: normal; color: #40515c; font-size: 12px; margin-top: 2px; }
 .card { border-radius: 6px; box-shadow: 0 1px 8px rgba(20, 35, 50, 0.06); }
 .small-note { color: #666; font-size: 12px; line-height: 1.35; }
 .sample-warning { color: #B2182B; font-size: 13px; font-weight: 600; margin: 6px 0; }
+.input-error { color: #B2182B; font-size: 13px; font-weight: 600; white-space: pre-wrap; margin-top: 8px; }
+.zero-mode-detail { margin: 4px 0 8px 22px; color: #555; font-size: 12px; line-height: 1.35; }
 .analysis-card .card-header { font-weight: 650; }
 .input-main-stack { height: calc(100vh - 150px); min-height: 620px; display: flex; flex-direction: column; gap: 12px; }
 .input-half-card { flex: 1 1 0; min-height: 0; }
@@ -84,10 +97,7 @@ clean_group_suffix <- function(x) {
   x
 }
 
-venn_upset_note <- div(
-  class = "small-note",
-  "Venn/UpSet use group-level protein sets, not sample-level sets. Each group set is decided by Minimum replicates detected in group. Recommended: Venn for 2-4 groups; UpSet for 5 or more groups."
-)
+venn_upset_note <- uiOutput("venn_upset_note")
 
 ml_common_inputs <- function(prefix) {
   tagList(
@@ -132,20 +142,32 @@ ui <- page_navbar(
   nav_panel("Input",
     layout_sidebar(
       sidebar = sidebar(width = 390,
-        textInput("file_path", "Result file path (.csv/.tsv)", value = ""),
-        radioButtons("software", "Software", choices = c("DIA-NN" = "DIANN", "Spectronaut" = "Spectronaut"), inline = TRUE),
-        conditionalPanel("input.software == 'DIANN'", radioButtons("diann_type", "DIA-NN sample suffix", choices = c("Bruker .d" = "d", "Thermo .raw" = "raw"), inline = TRUE)),
-        selectInput("row_id", "Matrix row name", choices = c("Protein name" = "protein_name", "Gene name" = "gene_name", "Accessions" = "accession"), selected = "protein_name"),
-        textInput("outdir", "Output directory", value = default_output),
-        actionButton("load_data", "Load data", class = "btn-primary"),
-        hr(), div(class = "brand", div("Developed by ", span(class = "developer-name", "Wenjia Zhang")), div(class = "institution-cn", "复旦大学化学系"), div(class = "institution-en", "Department of Chemistry, Fudan University"), div(class = "lab-line", "现代色谱分离分析实验室"))
+        div(class = "sidebar-scroll",
+          textInput("file_path", "Result file path (.csv/.tsv)", value = ""),
+        radioButtons("software", "Input type", choices = input_source_choices, selected = "diann", inline = FALSE),
+        conditionalPanel("input.software == 'diann'", radioButtons("diann_type", "DIA-NN sample suffix", choices = c("Bruker .d" = "d", "Thermo .raw" = "raw"), inline = TRUE)),
+        conditionalPanel("input.software != 'standard_matrix'", selectInput("row_id", "Matrix row name", choices = c("Protein name" = "protein_name", "Gene name" = "gene_name", "Accessions" = "accession"), selected = "protein_name")),
+        conditionalPanel("input.software == 'standard_matrix'",
+          div(class = "small-note", "Different software packages and processing workflows may use zero differently. Select the mode that matches the data source; the software will not infer this automatically."),
+          div(class = "small-note", "For physicochemical property analysis, standard matrix feature identifiers are matched to the annotation Accession column as-is. Use UniProt accessions in the first column if you want built-in annotation matching."),
+          radioButtons("standard_zero_mode", "0 values and missing values", choices = standard_zero_mode_choices, selected = ""),
+          div(class = "zero-mode-detail", strong("0 is a valid quantitative value"), br(), "Zero is retained as a valid quantitative value. Only explicit missing entries, such as blank cells, whitespace-only cells, NA, and NaN, are treated as missing values."),
+          div(class = "zero-mode-detail", strong("0 represents missing or unquantified"), br(), "Zero represents a missing or unquantified entry. Numeric zeros, blank cells, whitespace-only cells, NA, and NaN are all treated as missing values.")
+        ),
+        ),
+        div(class = "sidebar-fixed",
+          textInput("outdir", "Output directory", value = default_output),
+          actionButton("load_data", "Load data", class = "btn-primary"),
+          div(class = "input-error", textOutput("input_error")),
+          div(class = "brand", div("Developed by ", span(class = "developer-name", "Wenjia Zhang")), div(class = "institution-cn", "复旦大学化学系"), div(class = "institution-en", "Department of Chemistry, Fudan University"), div(class = "lab-line", "现代色谱分离分析实验室"), div(class = "lab-line-en", "Modern Chromatography Separation and Analysis"))
+        )
       ),
       div(class = "input-main-stack",
         card(class = "input-half-card", full_screen = TRUE,
-          card_header("Detected protein groups"),
+          card_header(uiOutput("input_overview_title")),
           layout_columns(col_widths = c(4, 4, 4), h3(textOutput("n_proteins")), h3(textOutput("n_samples")), h3(textOutput("n_groups"))),
-          DTOutput("counts_table")
-        ),
+          DTOutput("input_summary"),
+          DTOutput("counts_table")),
         card(class = "input-half-card", full_screen = TRUE,
           card_header("Sample groups"),
           div(class = "small-note", "Enter group suffixes only, for example 1, 2, A, or B. Internal group names become Group1, Group2, GroupA, or GroupB. Edit sample names to control names shown in downstream plots."),
@@ -199,7 +221,7 @@ ui <- page_navbar(
 )
 
 server <- function(input, output, session) {
-  rv <- reactiveValues(data = NULL, groups = NULL, preview = list(), preview_files = list(), preview_index = list(), status = list(), rf_features = NULL)
+  rv <- reactiveValues(data = NULL, groups = NULL, preview = list(), preview_files = list(), preview_index = list(), status = list(), rf_features = NULL, load_error = NULL)
   ids <- c("idbar","venn","upset","phys","cor","rank","cv","pca","umap","volcano","exprhm","rf","l1","rfl1","feature_umap","feature_hm","sling")
 
   observeEvent(input$exit_app, {
@@ -246,6 +268,66 @@ server <- function(input, output, session) {
     })
   }
 
+  is_standard_matrix_data <- function(dat = rv$data) identical(dat$input_source %||% dat$software %||% "", "standard_matrix")
+  clear_loaded_input <- function() {
+    old_pngs <- unlist(rv$preview_files, use.names = FALSE)
+    if (length(old_pngs) > 0) unlink(old_pngs[file.exists(old_pngs)], force = TRUE)
+    rv$data <- NULL
+    rv$groups <- NULL
+    rv$rf_features <- NULL
+    rv$preview <- list()
+    rv$preview_files <- list()
+    rv$preview_index <- list()
+    rv$status <- list()
+    rv$load_error <- NULL
+  }
+  observeEvent(input$software, {
+    clear_loaded_input()
+    if (!identical(input$software, "standard_matrix")) updateRadioButtons(session, "standard_zero_mode", selected = "")
+  }, ignoreInit = TRUE)
+  observeEvent(input$file_path, { clear_loaded_input() }, ignoreInit = TRUE)
+  observeEvent(input$standard_zero_mode, {
+    if (is_standard_matrix_data()) clear_loaded_input()
+  }, ignoreInit = TRUE)
+  standard_input_summary_df <- function(dat) {
+    total_cells <- length(dat$analysis_quant_matrix)
+    total_missing <- sum(dat$missingness_matrix)
+    available <- dat$available_quantitative_value_count
+    data.frame(
+      Metric = c(
+        "File type",
+        "First column name",
+        "Feature count",
+        "Sample count",
+        "Zero handling mode",
+        "Original zero cell count",
+        "Explicit missing value count",
+        "Total missing value count after selected mode",
+        "Number of available quantitative values",
+        "Available quantitative value proportion",
+        "Duplicate features present",
+        "All-missing sample columns present"
+      ),
+      Value = c(
+        toupper(tools::file_ext(input$file_path)),
+        dat$feature_column_name,
+        nrow(dat$quantity),
+        ncol(dat$quantity),
+        paste0(dat$missingness_mode, " - ", dat$missingness_mode_label),
+        dat$raw_zero_cell_count,
+        dat$explicit_missing_value_count,
+        total_missing,
+        available,
+        if (total_cells > 0) sprintf("%.2f%%", 100 * available / total_cells) else "NA",
+        "No",
+        "No"
+      ),
+      stringsAsFactors = FALSE
+    )
+  }
+  standard_mode_note <- function() {
+    if (is_standard_matrix_data()) paste0("Zero handling mode: ", rv$data$missingness_mode, " - ", rv$data$missingness_mode_label) else NULL
+  }
   outdir <- reactive({ normalizePath(input$outdir, winslash = "/", mustWork = FALSE) })
   observe({ dir.create(outdir(), recursive = TRUE, showWarnings = FALSE) })
   pts <- function(prefix) c(input[[paste0(prefix, "_w_pt")]] / 72, input[[paste0(prefix, "_h_pt")]] / 72)
@@ -370,6 +452,9 @@ server <- function(input, output, session) {
     dat <- rv$data
     colnames(dat$quantity) <- meta$display_name
     colnames(dat$qualitative) <- meta$display_name
+    if (!is.null(dat$analysis_quant_matrix)) colnames(dat$analysis_quant_matrix) <- meta$display_name
+    if (!is.null(dat$missingness_matrix)) colnames(dat$missingness_matrix) <- meta$display_name
+    if (!is.null(dat$explicit_missing_matrix)) colnames(dat$explicit_missing_matrix) <- meta$display_name
     if (!is.null(dat$ibaq)) colnames(dat$ibaq) <- meta$display_name
     dat$counts$OriginalSample <- dat$counts$Sample
     dat$counts$Sample <- meta$display_name[match(dat$counts$OriginalSample, meta$original_name)]
@@ -380,19 +465,45 @@ server <- function(input, output, session) {
 
   observeEvent(input$load_data, {
     req(input$file_path)
+    clear_loaded_input()
     withProgress(message = "Loading data", value = 0.2, {
-      dat <- extract_protein_data(input$file_path, input$software, input$diann_type %||% "d", input$row_id)
-      rv$data <- dat
-      rv$groups <- rep("1", length(dat$samples)); names(rv$groups) <- dat$samples
-      write_matrix_csv(dat$quantity, file.path(outdir(), "protein_sample_quantity_matrix.csv"))
-      write_matrix_csv(dat$qualitative, file.path(outdir(), "protein_sample_qualitative_matrix.csv"))
-      if (!is.null(dat$ibaq)) write_matrix_csv(dat$ibaq, file.path(outdir(), "protein_sample_ibaq_matrix.csv"))
-      data.table::fwrite(dat$counts, file.path(outdir(), "identified_protein_counts.csv"))
-      data.table::fwrite(dat$meta, file.path(outdir(), "protein_metadata.csv"))
-      data.table::fwrite(data.frame(original_name = dat$samples, display_name = dat$samples, group_suffix = "1", group = "Group1", stringsAsFactors = FALSE), file.path(outdir(), "sample_metadata.csv"))
+      tryCatch({
+        source_type <- input$software %||% "diann"
+        if (source_type == "standard_matrix") {
+          mode <- input$standard_zero_mode %||% ""
+          if (!nzchar(mode)) stop("Please select how zero should be interpreted before loading a standard quantitative matrix.")
+          dat <- read_standard_matrix(input$file_path, mode)
+        } else if (source_type == "diann") {
+          dat <- extract_protein_data(input$file_path, "DIANN", input$diann_type %||% "d", input$row_id)
+          dat$input_source <- "diann"
+        } else if (source_type == "spectronaut") {
+          dat <- extract_protein_data(input$file_path, "Spectronaut", input$diann_type %||% "d", input$row_id)
+          dat$input_source <- "spectronaut"
+        } else {
+          stop("Unknown input type: ", source_type)
+        }
+        rv$data <- dat
+        rv$groups <- rep("1", length(dat$samples)); names(rv$groups) <- dat$samples
+        if (is_standard_matrix_data(dat)) {
+          write_matrix_csv(dat$quantity, file.path(outdir(), "standard_matrix_analysis_quantity_matrix.csv"), id_col = "FeatureID")
+          write_matrix_csv(dat$raw_quant_matrix, file.path(outdir(), "standard_matrix_raw_quantity_matrix.csv"), id_col = "FeatureID")
+          write_matrix_csv(dat$missingness_matrix, file.path(outdir(), "standard_matrix_missingness_matrix.csv"), id_col = "FeatureID")
+          data.table::fwrite(dat$counts, file.path(outdir(), "standard_matrix_available_quantitative_value_counts.csv"))
+          data.table::fwrite(standard_input_summary_df(dat), file.path(outdir(), "standard_matrix_input_summary.csv"))
+        } else {
+          write_matrix_csv(dat$quantity, file.path(outdir(), "protein_sample_quantity_matrix.csv"))
+          write_matrix_csv(dat$qualitative, file.path(outdir(), "protein_sample_qualitative_matrix.csv"))
+          if (!is.null(dat$ibaq)) write_matrix_csv(dat$ibaq, file.path(outdir(), "protein_sample_ibaq_matrix.csv"))
+          data.table::fwrite(dat$counts, file.path(outdir(), "identified_protein_counts.csv"))
+        }
+        data.table::fwrite(dat$meta, file.path(outdir(), if (is_standard_matrix_data(dat)) "feature_metadata.csv" else "protein_metadata.csv"))
+        data.table::fwrite(data.frame(original_name = dat$samples, display_name = dat$samples, group_suffix = "1", group = "Group1", stringsAsFactors = FALSE), file.path(outdir(), "sample_metadata.csv"))
+      }, error = function(e) {
+        rv$load_error <- conditionMessage(e)
+        showNotification(rv$load_error, type = "error", duration = 10)
+      })
     })
   })
-
   observeEvent(input$auto_short_names, {
     req(rv$data)
     meta <- sample_metadata()
@@ -416,49 +527,80 @@ server <- function(input, output, session) {
     req(rv$data)
     sample_name_problem()
   })
-  output$n_proteins <- renderText({ req(rv$data); paste0(nrow(rv$data$quantity), " proteins") })
+  output$input_error <- renderText({ rv$load_error %||% "" })
+  output$input_overview_title <- renderUI({ if (is_standard_matrix_data()) "Available quantitative values overview" else "Detected protein groups" })
+  output$n_proteins <- renderText({ req(rv$data); paste0(nrow(rv$data$quantity), if (is_standard_matrix_data()) " features" else " proteins") })
   output$n_samples <- renderText({ req(rv$data); paste0(ncol(rv$data$quantity), " samples") })
   output$n_groups <- renderText({ req(rv$data); paste0(length(unique(group_info()$Group)), " groups") })
+  output$input_summary <- renderDT({
+    req(rv$data)
+    if (!is_standard_matrix_data()) return(datatable(data.frame(Metric = character(), Value = character()), options = list(dom = "t")))
+    datatable(standard_input_summary_df(rv$data), rownames = FALSE, options = list(dom = "t", pageLength = 12))
+  })
   output$counts_table <- renderDT({
     req(rv$data)
     datatable(dplyr::left_join(data_for_analysis()$counts, sample_metadata(), by = c("Sample" = "display_name", "OriginalSample" = "original_name")), options = list(pageLength = 8))
   })
-
+  output$venn_upset_note <- renderUI({
+    if (is_standard_matrix_data()) {
+      div(class = "small-note", "Venn/UpSet use group-level quantified-feature sets based on non-missing available quantitative values after the selected zero handling mode. Recommended: Venn for 2-4 groups; UpSet for 5 or more groups.")
+    } else {
+      div(class = "small-note", "Venn/UpSet use group-level protein sets, not sample-level sets. Each group set is decided by Minimum replicates detected in group. Recommended: Venn for 2-4 groups; UpSet for 5 or more groups.")
+    }
+  })
   output$volcano_groups <- renderUI({ req(rv$data); gs <- levels(group_info()$Group); tagList(selectInput("volcano_a", "Reference group", choices = gs), selectInput("volcano_b", "Comparison group", choices = gs, selected = gs[min(2, length(gs))])) })
   output$slingshot_groups <- renderUI({ req(rv$data); gs <- levels(group_info()$Group); tagList(selectInput("sling_start", "Start group", choices = gs, selected = gs[1]), selectInput("sling_end", "Optional end group", choices = c("None", gs), selected = "None")) })
 
-  observeEvent(input$run_idbar, { run_analysis("idbar", "Identification barplot", { req(rv$data); d <- analysis_dir("idbar"); wh <- pts("idbar"); pdf <- file.path(d, "identification_barplot.pdf"); csv <- file.path(d, "identification_group_summary.csv"); plot_identification_bar(data_for_analysis()$counts, group_info(), pdf, csv, wh[1], wh[2], input$idbar_palette); finish("idbar", pdf, c(csv, sub("\\.csv$", "_sample_counts.csv", csv)), input$idbar_export_csv) }) })
+  observeEvent(input$run_idbar, { run_analysis("idbar", if (is_standard_matrix_data()) "Available quantitative values overview" else "Identification barplot", { req(rv$data); d <- analysis_dir("idbar"); wh <- pts("idbar"); if (is_standard_matrix_data()) { pdf <- file.path(d, "available_quantitative_values_barplot.pdf"); csv <- file.path(d, "available_quantitative_values_group_summary.csv"); plot_available_quantitative_bar(data_for_analysis()$counts, group_info(), pdf, csv, wh[1], wh[2], input$idbar_palette) } else { pdf <- file.path(d, "identification_barplot.pdf"); csv <- file.path(d, "identification_group_summary.csv"); plot_identification_bar(data_for_analysis()$counts, group_info(), pdf, csv, wh[1], wh[2], input$idbar_palette) }; finish("idbar", pdf, c(csv, sub("\\.csv$", "_sample_counts.csv", csv)), input$idbar_export_csv, standard_mode_note()) }) })
 
   make_sets <- function(min_reps) identified_by_group(data_for_analysis()$qualitative, group_info(), min_reps)
-  observeEvent(input$run_venn, { run_analysis("venn", "Venn diagram", { req(rv$data); d <- analysis_dir("venn"); wh <- pts("venn"); sets <- validate_group_sets(make_sets(input$venn_min_reps), input$venn_min_reps, "venn"); pdf <- file.path(d, "venn.pdf"); csv <- file.path(d, "venn_membership.csv"); set_df <- make_set_membership(sets); if (input$venn_export_csv) data.table::fwrite(set_df, csv); grDevices::pdf(pdf, width = wh[1], height = wh[2]); grid::grid.draw(VennDiagram::venn.diagram(sets, filename = NULL, fill = sci_palette(length(sets), input$venn_palette), alpha = 0.45, cex = 0.8, cat.cex = 0.8, margin = 0.08)); grDevices::dev.off(); finish("venn", pdf, csv, input$venn_export_csv) }) })
-  observeEvent(input$run_upset, { run_analysis("upset", "UpSet plot", { req(rv$data); d <- analysis_dir("upset"); wh <- pts("upset"); sets <- validate_group_sets(make_sets(input$upset_min_reps), input$upset_min_reps, "upset"); pdf <- file.path(d, "upset.pdf"); csv <- file.path(d, "upset_membership.csv"); set_df <- make_set_membership(sets); if (nrow(set_df) == 0 || ncol(set_df) - 1 < 2) stop("UpSet plot requires a membership table with at least one protein and at least 2 non-empty group columns."); if (input$upset_export_csv) data.table::fwrite(set_df, csv); grDevices::pdf(pdf, width = max(wh[1], 5), height = max(wh[2], 4)); UpSetR::upset(as.data.frame(set_df[, -1, drop = FALSE]), nsets = length(sets), order.by = "freq"); grDevices::dev.off(); finish("upset", pdf, csv, input$upset_export_csv) }) })
+  validate_current_sets <- function(sets, min_reps, analysis) {
+    tryCatch(validate_group_sets(sets, min_reps, analysis), error = function(e) {
+      msg <- conditionMessage(e)
+      if (is_standard_matrix_data()) msg <- gsub("protein sets", "quantified-feature sets", msg, fixed = TRUE)
+      stop(msg, call. = FALSE)
+    })
+  }
+  membership_for_current_input <- function(sets) {
+    set_df <- make_set_membership(sets)
+    if (is_standard_matrix_data() && "ProteinID" %in% colnames(set_df)) colnames(set_df)[colnames(set_df) == "ProteinID"] <- "FeatureID"
+    set_df
+  }
+  observeEvent(input$run_venn, { run_analysis("venn", "Venn diagram", { req(rv$data); d <- analysis_dir("venn"); wh <- pts("venn"); sets <- validate_current_sets(make_sets(input$venn_min_reps), input$venn_min_reps, "venn"); pdf <- file.path(d, "venn.pdf"); csv <- file.path(d, "venn_membership.csv"); set_df <- membership_for_current_input(sets); if (input$venn_export_csv) data.table::fwrite(set_df, csv); grDevices::pdf(pdf, width = wh[1], height = wh[2]); grid::grid.draw(VennDiagram::venn.diagram(sets, filename = NULL, fill = sci_palette(length(sets), input$venn_palette), alpha = 0.45, cex = 0.8, cat.cex = 0.8, margin = 0.08)); grDevices::dev.off(); finish("venn", pdf, csv, input$venn_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_upset, { run_analysis("upset", "UpSet plot", { req(rv$data); d <- analysis_dir("upset"); wh <- pts("upset"); sets <- validate_current_sets(make_sets(input$upset_min_reps), input$upset_min_reps, "upset"); pdf <- file.path(d, "upset.pdf"); csv <- file.path(d, "upset_membership.csv"); set_df <- membership_for_current_input(sets); if (nrow(set_df) == 0 || ncol(set_df) - 1 < 2) stop("UpSet plot requires a membership table with at least one ", if (is_standard_matrix_data()) "feature" else "protein", " and at least 2 non-empty group columns."); if (input$upset_export_csv) data.table::fwrite(set_df, csv); grDevices::pdf(pdf, width = max(wh[1], 5), height = max(wh[2], 4)); UpSetR::upset(as.data.frame(set_df[, -1, drop = FALSE]), nsets = length(sets), order.by = "freq"); grDevices::dev.off(); finish("upset", pdf, csv, input$upset_export_csv, standard_mode_note()) }) })
   observeEvent(input$run_phys, { run_analysis("phys", "Physicochemical property distributions", {
     req(rv$data)
     d <- analysis_dir("phys")
     wh <- pts("phys")
     sets <- make_sets(input$phys_min_reps)
     meta <- data_for_analysis()$meta
-    sets_acc <- lapply(sets, function(ids) unique(meta$Accession[match(ids, meta$RowID)]))
+    if (is_standard_matrix_data()) {
+      sets_acc <- lapply(sets, function(ids) unique(ids[nzchar(ids) & !is.na(ids)]))
+      annotation_note <- "Standard matrix feature identifiers are matched to the annotation Accession column as-is; if few entries match, the first column may not be UniProt accessions for the selected species."
+    } else {
+      sets_acc <- lapply(sets, function(ids) unique(analysis_ids_to_accessions(meta, ids)))
+      annotation_note <- NULL
+    }
     run_physicochemical(sets_acc, annotation_path(), d, wh[1], wh[2], input$phys_palette)
     phys_pdfs <- list.files(d, pattern = "\\.pdf$", full.names = TRUE)
     phys_csvs <- list.files(d, pattern = "\\.csv$", full.names = TRUE)
-    finish("phys", phys_pdfs, phys_csvs, input$phys_export_csv, paste("Annotation:", annotation_path()))
+    finish("phys", phys_pdfs, phys_csvs, input$phys_export_csv, paste(c(standard_mode_note(), annotation_note, paste("Annotation:", annotation_path())), collapse = "\n"))
   }) })
 
-  observeEvent(input$run_cor, { run_analysis("cor", "Correlation heatmap", { req(rv$data); d <- analysis_dir("cor"); wh <- pts("cor"); pdf <- file.path(d, paste0(input$cor_method, "_correlation_heatmap.pdf")); csv <- file.path(d, paste0(input$cor_method, "_correlation_ordered_matrix.csv")); plot_correlation_heatmap(data_for_analysis()$quantity, group_info(), pdf, csv, input$cor_method, input$cor_order, input$cor_cluster, input$cor_digits, input$cor_font, input$cor_color, input$cor_min, input$cor_max, wh[1], wh[2]); finish("cor", pdf, list.files(d, pattern = "\\.csv$", full.names = TRUE), input$cor_export_csv) }) })
-  observeEvent(input$run_rank, { run_analysis("rank", "Rank-abundance plot", { req(rv$data); d <- analysis_dir("rank"); wh <- pts("rank"); pdf <- file.path(d, "rank_abundance.pdf"); csv <- file.path(d, "rank_abundance_data.csv"); plot_rank_abundance(data_for_analysis()$quantity, group_info(), pdf, csv, wh[1], wh[2], input$rank_palette); finish("rank", pdf, csv, input$rank_export_csv) }) })
-  observeEvent(input$run_cv, { run_analysis("cv", "CV ridgeline", { req(rv$data); d <- analysis_dir("cv"); wh <- pts("cv"); pdf <- file.path(d, "cv_ridgeline.pdf"); csv <- file.path(d, "cv_values.csv"); plot_cv_ridges(data_for_analysis()$quantity, group_info(), pdf, csv, input$cv_max, wh[1], wh[2], input$cv_palette); finish("cv", pdf, c(csv, sub("\\.csv$", "_median.csv", csv)), input$cv_export_csv) }) })
+  observeEvent(input$run_cor, { run_analysis("cor", "Correlation heatmap", { req(rv$data); d <- analysis_dir("cor"); wh <- pts("cor"); pdf <- file.path(d, paste0(input$cor_method, "_correlation_heatmap.pdf")); csv <- file.path(d, paste0(input$cor_method, "_correlation_ordered_matrix.csv")); plot_correlation_heatmap(data_for_analysis()$quantity, group_info(), pdf, csv, input$cor_method, input$cor_order, input$cor_cluster, input$cor_digits, input$cor_font, input$cor_color, input$cor_min, input$cor_max, wh[1], wh[2]); finish("cor", pdf, list.files(d, pattern = "\\.csv$", full.names = TRUE), input$cor_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_rank, { run_analysis("rank", "Rank-abundance plot", { req(rv$data); d <- analysis_dir("rank"); wh <- pts("rank"); pdf <- file.path(d, "rank_abundance.pdf"); csv <- file.path(d, "rank_abundance_data.csv"); plot_rank_abundance(data_for_analysis()$quantity, group_info(), pdf, csv, wh[1], wh[2], input$rank_palette); finish("rank", pdf, csv, input$rank_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_cv, { run_analysis("cv", "CV ridgeline", { req(rv$data); d <- analysis_dir("cv"); wh <- pts("cv"); pdf <- file.path(d, "cv_ridgeline.pdf"); csv <- file.path(d, "cv_values.csv"); plot_cv_ridges(data_for_analysis()$quantity, group_info(), pdf, csv, input$cv_max, wh[1], wh[2], input$cv_palette); finish("cv", pdf, c(csv, sub("\\.csv$", "_median.csv", csv)), input$cv_export_csv, standard_mode_note()) }) })
 
   pca_data <- function(min_valid) { used <- preprocess_expr(data_for_analysis()$quantity, TRUE, min_valid); sample_mat <- t(used); pca <- prcomp(sample_mat, center = TRUE, scale. = TRUE); var <- summary(pca)$importance[2, 1:2] * 100; df <- data.frame(Sample = rownames(pca$x), PC1 = pca$x[,1], PC2 = pca$x[,2]) |> left_join(group_info(), by = "Sample"); list(df = df, var = var) }
-  observeEvent(input$run_pca, { run_analysis("pca", "PCA plot", { req(rv$data); d <- analysis_dir("pca"); wh <- pts("pca"); res <- pca_data(input$pca_min_valid); pdf <- file.path(d, "PCA_plot.pdf"); csv <- file.path(d, "PCA_coordinates.csv"); if (input$pca_export_csv) data.table::fwrite(res$df, csv); p <- ggplot2::ggplot(res$df, ggplot2::aes(PC1, PC2, color = Group)) + ggplot2::geom_point(size = 2.4) + ggplot2::scale_color_manual(values = sci_palette(length(levels(group_info()$Group)), input$pca_palette)) + theme_sci() + ggplot2::labs(x = sprintf("PC1 (%.2f%%)", res$var[1]), y = sprintf("PC2 (%.2f%%)", res$var[2])); ggplot2::ggsave(pdf, p, width = wh[1], height = wh[2]); finish("pca", pdf, csv, input$pca_export_csv) }) })
-  observeEvent(input$run_umap, { run_analysis("umap", "UMAP plot", { req(rv$data); d <- analysis_dir("umap"); wh <- pts("umap"); used <- preprocess_expr(data_for_analysis()$quantity, TRUE, input$umap_min_valid); sample_mat <- t(used); set.seed(123); nn <- min(input$umap_neighbors, max(2, nrow(sample_mat) - 1)); um <- uwot::umap(sample_mat, n_neighbors = nn, min_dist = input$umap_min_dist, metric = "euclidean", verbose = FALSE); df <- data.frame(Sample = rownames(sample_mat), UMAP1 = um[,1], UMAP2 = um[,2]) |> left_join(group_info(), by = "Sample"); pdf <- file.path(d, "UMAP_plot.pdf"); csv <- file.path(d, "UMAP_coordinates.csv"); if (input$umap_export_csv) data.table::fwrite(df, csv); p <- ggplot2::ggplot(df, ggplot2::aes(UMAP1, UMAP2, color = Group)) + ggplot2::geom_point(size = 2.4) + ggplot2::scale_color_manual(values = sci_palette(length(levels(group_info()$Group)), input$umap_palette)) + theme_sci(); ggplot2::ggsave(pdf, p, width = wh[1], height = wh[2]); finish("umap", pdf, csv, input$umap_export_csv) }) })
+  observeEvent(input$run_pca, { run_analysis("pca", "PCA plot", { req(rv$data); d <- analysis_dir("pca"); wh <- pts("pca"); res <- pca_data(input$pca_min_valid); pdf <- file.path(d, "PCA_plot.pdf"); csv <- file.path(d, "PCA_coordinates.csv"); if (input$pca_export_csv) data.table::fwrite(res$df, csv); p <- ggplot2::ggplot(res$df, ggplot2::aes(PC1, PC2, color = Group)) + ggplot2::geom_point(size = 2.4) + ggplot2::scale_color_manual(values = sci_palette(length(levels(group_info()$Group)), input$pca_palette)) + theme_sci() + ggplot2::labs(x = sprintf("PC1 (%.2f%%)", res$var[1]), y = sprintf("PC2 (%.2f%%)", res$var[2])); ggplot2::ggsave(pdf, p, width = wh[1], height = wh[2]); finish("pca", pdf, csv, input$pca_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_umap, { run_analysis("umap", "UMAP plot", { req(rv$data); d <- analysis_dir("umap"); wh <- pts("umap"); used <- preprocess_expr(data_for_analysis()$quantity, TRUE, input$umap_min_valid); sample_mat <- t(used); set.seed(123); nn <- min(input$umap_neighbors, max(2, nrow(sample_mat) - 1)); um <- uwot::umap(sample_mat, n_neighbors = nn, min_dist = input$umap_min_dist, metric = "euclidean", verbose = FALSE); df <- data.frame(Sample = rownames(sample_mat), UMAP1 = um[,1], UMAP2 = um[,2]) |> left_join(group_info(), by = "Sample"); pdf <- file.path(d, "UMAP_plot.pdf"); csv <- file.path(d, "UMAP_coordinates.csv"); if (input$umap_export_csv) data.table::fwrite(df, csv); p <- ggplot2::ggplot(df, ggplot2::aes(UMAP1, UMAP2, color = Group)) + ggplot2::geom_point(size = 2.4) + ggplot2::scale_color_manual(values = sci_palette(length(levels(group_info()$Group)), input$umap_palette)) + theme_sci(); ggplot2::ggsave(pdf, p, width = wh[1], height = wh[2]); finish("umap", pdf, csv, input$umap_export_csv, standard_mode_note()) }) })
 
-  observeEvent(input$run_volcano, { run_analysis("volcano", "Volcano plot", { req(rv$data); d <- analysis_dir("volcano"); wh <- pts("volcano"); pdf <- file.path(d, paste0("volcano_", input$volcano_b, "_vs_", input$volcano_a, ".pdf")); csv <- file.path(d, paste0("volcano_", input$volcano_b, "_vs_", input$volcano_a, ".csv")); run_volcano(data_for_analysis()$quantity, group_info(), input$volcano_a, input$volcano_b, pdf, csv, input$log2fc, input$adj_p_cutoff, input$raw_p_cutoff, input$volcano_fc_method, input$volcano_test_method, input$volcano_sig_metric, wh[1], wh[2]); finish("volcano", pdf, csv, input$volcano_export_csv) }) })
-  observeEvent(input$run_exprhm, { run_analysis("exprhm", "Expression heatmap", { req(rv$data); d <- analysis_dir("exprhm"); wh <- pts("exprhm"); pdf <- file.path(d, "expression_heatmap.pdf"); csv <- file.path(d, "expression_heatmap_values.csv"); plot_expression_heatmap(data_for_analysis()$quantity, group_info(), pdf, csv, input$hm_top, input$hm_row_cluster, input$hm_col_cluster, input$hm_k, max(wh[1], 3), max(wh[2], 3)); finish("exprhm", pdf, list.files(d, pattern = "\\.csv$", full.names = TRUE), input$exprhm_export_csv) }) })
+  observeEvent(input$run_volcano, { run_analysis("volcano", "Volcano plot", { req(rv$data); d <- analysis_dir("volcano"); wh <- pts("volcano"); pdf <- file.path(d, paste0("volcano_", input$volcano_b, "_vs_", input$volcano_a, ".pdf")); csv <- file.path(d, paste0("volcano_", input$volcano_b, "_vs_", input$volcano_a, ".csv")); run_volcano(data_for_analysis()$quantity, group_info(), input$volcano_a, input$volcano_b, pdf, csv, input$log2fc, input$adj_p_cutoff, input$raw_p_cutoff, input$volcano_fc_method, input$volcano_test_method, input$volcano_sig_metric, wh[1], wh[2]); finish("volcano", pdf, csv, input$volcano_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_exprhm, { run_analysis("exprhm", "Expression heatmap", { req(rv$data); d <- analysis_dir("exprhm"); wh <- pts("exprhm"); pdf <- file.path(d, "expression_heatmap.pdf"); csv <- file.path(d, "expression_heatmap_values.csv"); plot_expression_heatmap(data_for_analysis()$quantity, group_info(), pdf, csv, input$hm_top, input$hm_row_cluster, input$hm_col_cluster, input$hm_k, max(wh[1], 3), max(wh[2], 3)); finish("exprhm", pdf, list.files(d, pattern = "\\.csv$", full.names = TRUE), input$exprhm_export_csv, standard_mode_note()) }) })
 
-  observeEvent(input$run_rf, { run_analysis("rf", "Random forest", { req(rv$data); d <- analysis_dir("rf"); wh <- pts("rf"); top <- run_random_forest_selection(data_for_analysis()$quantity, group_info(), d, input$rf_top, input$rf_ntree, input$rf_seed, input$rf_split_mode, input$rf_train_prop, input$rf_mtry, isTRUE(input$rf_small_sample)); rv$rf_features <- top; imp <- data.table::fread(file.path(d, "random_forest_importance.csv"), data.table = FALSE); plot_df <- head(imp, input$rf_top); plot_df$ProteinID <- factor(plot_df$ProteinID, levels = rev(plot_df$ProteinID)); pdf <- file.path(d, "random_forest_top_importance.pdf"); csvs <- list.files(d, pattern = "\\.csv$", full.names = TRUE); p <- ggplot2::ggplot(plot_df, ggplot2::aes(ProteinID, RFImportance, fill = RFImportance)) + ggplot2::geom_col() + ggplot2::coord_flip() + ggplot2::scale_fill_gradient(low = "#DCEAF7", high = sci_palette(1, input$rf_palette)) + theme_sci() + ggplot2::labs(x = NULL, y = "MeanDecreaseGini"); ggplot2::ggsave(pdf, p, width = wh[1], height = max(wh[2], 4)); finish("rf", pdf, csvs, input$rf_export_csv) }) })
-  observeEvent(input$run_l1, { run_analysis("l1", "L1 feature selection", { req(rv$data); d <- analysis_dir("l1"); wh <- pts("l1"); top <- run_l1_selection(data_for_analysis()$quantity, group_info(), d, input$l1_top, input$l1_alpha, input$l1_seed, input$l1_split_mode, input$l1_train_prop, input$l1_lambda, input$l1_folds, isTRUE(input$l1_small_sample)); scores <- data.table::fread(file.path(d, "l1_feature_scores.csv"), data.table = FALSE); plot_df <- head(scores, input$l1_top); plot_df$ProteinID <- factor(plot_df$ProteinID, levels = rev(plot_df$ProteinID)); pdf <- file.path(d, "l1_top_coefficients.pdf"); csvs <- list.files(d, pattern = "\\.csv$", full.names = TRUE); if (nrow(plot_df) > 0) { p <- ggplot2::ggplot(plot_df, ggplot2::aes(ProteinID, L1Score, fill = L1Score)) + ggplot2::geom_col() + ggplot2::coord_flip() + ggplot2::scale_fill_gradient(low = "#E9EDF3", high = sci_palette(1, input$l1_palette)) + theme_sci() + ggplot2::labs(x = NULL, y = "Sum absolute L1 coefficient"); ggplot2::ggsave(pdf, p, width = wh[1], height = max(wh[2], 4)) }; finish("l1", pdf, csvs, input$l1_export_csv) }) })
-  observeEvent(input$run_rfl1, { run_analysis("rfl1", "RF + L1 feature selection", { req(rv$data); d <- analysis_dir("rfl1"); wh <- pts("rfl1"); top <- run_feature_selection(data_for_analysis()$quantity, group_info(), d, input$rfl1_top, input$rfl1_ntree, input$rfl1_alpha, input$rfl1_seed, input$rfl1_split_mode, input$rfl1_train_prop, input$rfl1_mtry, input$rfl1_lambda, input$rfl1_folds, isTRUE(input$rfl1_small_sample)); rv$rf_features <- top; rf <- data.table::fread(file.path(d, "random_forest_importance.csv"), data.table = FALSE); l1 <- data.table::fread(file.path(d, "l1_feature_scores.csv"), data.table = FALSE); summary_df <- data.frame(ProteinID = top, CombinedRank = seq_along(top), stringsAsFactors = FALSE) |> dplyr::left_join(rf, by = "ProteinID") |> dplyr::left_join(l1, by = "ProteinID") |> dplyr::mutate(Source = dplyr::case_when(!is.na(RFImportance) & !is.na(L1Score) ~ "RF + L1", !is.na(RFImportance) ~ "RF only", !is.na(L1Score) ~ "L1 only", TRUE ~ "Other")); summary_csv <- file.path(d, "combined_feature_summary.csv"); data.table::fwrite(summary_df, summary_csv); plot_df <- summary_df; plot_df$ProteinID <- factor(plot_df$ProteinID, levels = rev(plot_df$ProteinID)); pdf <- file.path(d, "rf_l1_combined_features.pdf"); p <- ggplot2::ggplot(plot_df, ggplot2::aes(ProteinID, CombinedRank, fill = Source)) + ggplot2::geom_col() + ggplot2::coord_flip() + ggplot2::scale_fill_manual(values = c("RF + L1" = sci_palette(1, input$rfl1_palette), "RF only" = "#8FB9D9", "L1 only" = "#E8A35D", "Other" = "grey70")) + ggplot2::scale_y_reverse() + theme_sci() + ggplot2::labs(x = NULL, y = "Combined rank"); ggplot2::ggsave(pdf, p, width = wh[1], height = max(wh[2], 4)); finish("rfl1", pdf, list.files(d, pattern = "\\.csv$", full.names = TRUE), input$rfl1_export_csv) }) })
+  observeEvent(input$run_rf, { run_analysis("rf", "Random forest", { req(rv$data); d <- analysis_dir("rf"); wh <- pts("rf"); top <- run_random_forest_selection(data_for_analysis()$quantity, group_info(), d, input$rf_top, input$rf_ntree, input$rf_seed, input$rf_split_mode, input$rf_train_prop, input$rf_mtry, isTRUE(input$rf_small_sample)); rv$rf_features <- top; imp <- data.table::fread(file.path(d, "random_forest_importance.csv"), data.table = FALSE); plot_df <- head(imp, input$rf_top); plot_df$ProteinID <- factor(plot_df$ProteinID, levels = rev(plot_df$ProteinID)); pdf <- file.path(d, "random_forest_top_importance.pdf"); csvs <- list.files(d, pattern = "\\.csv$", full.names = TRUE); p <- ggplot2::ggplot(plot_df, ggplot2::aes(ProteinID, RFImportance, fill = RFImportance)) + ggplot2::geom_col() + ggplot2::coord_flip() + ggplot2::scale_fill_gradient(low = "#DCEAF7", high = sci_palette(1, input$rf_palette)) + theme_sci() + ggplot2::labs(x = NULL, y = "MeanDecreaseGini"); ggplot2::ggsave(pdf, p, width = wh[1], height = max(wh[2], 4)); finish("rf", pdf, csvs, input$rf_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_l1, { run_analysis("l1", "L1 feature selection", { req(rv$data); d <- analysis_dir("l1"); wh <- pts("l1"); top <- run_l1_selection(data_for_analysis()$quantity, group_info(), d, input$l1_top, input$l1_alpha, input$l1_seed, input$l1_split_mode, input$l1_train_prop, input$l1_lambda, input$l1_folds, isTRUE(input$l1_small_sample)); scores <- data.table::fread(file.path(d, "l1_feature_scores.csv"), data.table = FALSE); plot_df <- head(scores, input$l1_top); plot_df$ProteinID <- factor(plot_df$ProteinID, levels = rev(plot_df$ProteinID)); pdf <- file.path(d, "l1_top_coefficients.pdf"); csvs <- list.files(d, pattern = "\\.csv$", full.names = TRUE); if (nrow(plot_df) > 0) { p <- ggplot2::ggplot(plot_df, ggplot2::aes(ProteinID, L1Score, fill = L1Score)) + ggplot2::geom_col() + ggplot2::coord_flip() + ggplot2::scale_fill_gradient(low = "#E9EDF3", high = sci_palette(1, input$l1_palette)) + theme_sci() + ggplot2::labs(x = NULL, y = "Sum absolute L1 coefficient"); ggplot2::ggsave(pdf, p, width = wh[1], height = max(wh[2], 4)) }; finish("l1", pdf, csvs, input$l1_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_rfl1, { run_analysis("rfl1", "RF + L1 feature selection", { req(rv$data); d <- analysis_dir("rfl1"); wh <- pts("rfl1"); top <- run_feature_selection(data_for_analysis()$quantity, group_info(), d, input$rfl1_top, input$rfl1_ntree, input$rfl1_alpha, input$rfl1_seed, input$rfl1_split_mode, input$rfl1_train_prop, input$rfl1_mtry, input$rfl1_lambda, input$rfl1_folds, isTRUE(input$rfl1_small_sample)); rv$rf_features <- top; rf <- data.table::fread(file.path(d, "random_forest_importance.csv"), data.table = FALSE); l1 <- data.table::fread(file.path(d, "l1_feature_scores.csv"), data.table = FALSE); summary_df <- data.frame(ProteinID = top, CombinedRank = seq_along(top), stringsAsFactors = FALSE) |> dplyr::left_join(rf, by = "ProteinID") |> dplyr::left_join(l1, by = "ProteinID") |> dplyr::mutate(Source = dplyr::case_when(!is.na(RFImportance) & !is.na(L1Score) ~ "RF + L1", !is.na(RFImportance) ~ "RF only", !is.na(L1Score) ~ "L1 only", TRUE ~ "Other")); summary_csv <- file.path(d, "combined_feature_summary.csv"); data.table::fwrite(summary_df, summary_csv); plot_df <- summary_df; plot_df$ProteinID <- factor(plot_df$ProteinID, levels = rev(plot_df$ProteinID)); pdf <- file.path(d, "rf_l1_combined_features.pdf"); p <- ggplot2::ggplot(plot_df, ggplot2::aes(ProteinID, CombinedRank, fill = Source)) + ggplot2::geom_col() + ggplot2::coord_flip() + ggplot2::scale_fill_manual(values = c("RF + L1" = sci_palette(1, input$rfl1_palette), "RF only" = "#8FB9D9", "L1 only" = "#E8A35D", "Other" = "grey70")) + ggplot2::scale_y_reverse() + theme_sci() + ggplot2::labs(x = NULL, y = "Combined rank"); ggplot2::ggsave(pdf, p, width = wh[1], height = max(wh[2], 4)); finish("rfl1", pdf, list.files(d, pattern = "\\.csv$", full.names = TRUE), input$rfl1_export_csv, standard_mode_note()) }) })
   read_feature_ids <- function(files, label) {
     files <- files[file.exists(files)]
     if (length(files) == 0) stop(label, " selected proteins have not been generated yet. Please run the corresponding machine-learning analysis first.")
@@ -490,9 +632,9 @@ server <- function(input, output, session) {
     info <- ml_feature_files(source)
     head(read_feature_ids(info$files, info$label), n)
   }
-  observeEvent(input$run_feature_umap, { run_analysis("feature_umap", "Feature UMAP", { req(rv$data); d <- analysis_dir("feature_umap"); wh <- pts("feature_umap"); feats <- get_ml_features(input$feature_umap_source, input$feature_top_umap); feats <- intersect(feats, rownames(data_for_analysis()$quantity)); if (length(feats) < 2) stop("Feature UMAP requires at least two selected proteins present in the current quantity matrix."); used <- preprocess_expr(data_for_analysis()$quantity[feats, , drop = FALSE], TRUE, 0.5); if (nrow(used) < 2) stop("Feature UMAP requires at least two selected proteins after preprocessing."); sample_mat <- t(used); set.seed(123); nn <- min(input$feature_umap_neighbors, max(2, nrow(sample_mat)-1)); um <- uwot::umap(sample_mat, n_neighbors = nn, min_dist = input$feature_umap_min_dist, metric = "euclidean", verbose = FALSE); df <- data.frame(Sample = rownames(sample_mat), UMAP1 = um[,1], UMAP2 = um[,2]) |> left_join(group_info(), by = "Sample"); pdf <- file.path(d, "feature_UMAP.pdf"); csv <- file.path(d, "feature_UMAP_coordinates.csv"); source_csv <- file.path(d, "feature_UMAP_selected_proteins.csv"); if (input$feature_umap_export_csv) { data.table::fwrite(df, csv); data.table::fwrite(data.frame(ProteinID = rownames(used), Source = input$feature_umap_source), source_csv) }; p <- ggplot2::ggplot(df, ggplot2::aes(UMAP1, UMAP2, color = Group)) + ggplot2::geom_point(size = 2.4) + ggplot2::scale_color_manual(values = sci_palette(length(levels(group_info()$Group)), input$feature_umap_palette)) + theme_sci(); ggplot2::ggsave(pdf, p, width = wh[1], height = wh[2]); finish("feature_umap", pdf, c(csv, source_csv), input$feature_umap_export_csv) }) })
-  observeEvent(input$run_feature_hm, { run_analysis("feature_hm", "ML selected expression heatmap", { req(rv$data); d <- analysis_dir("feature_hm"); wh <- pts("feature_hm"); feats <- get_ml_features(input$feature_hm_source, input$feature_top_hm); feats <- intersect(feats, rownames(data_for_analysis()$quantity)); if (length(feats) < 2) stop("Feature heatmap requires at least two selected proteins present in the current quantity matrix."); pdf <- file.path(d, "feature_heatmap.pdf"); csv <- file.path(d, "feature_heatmap_values.csv"); source_csv <- file.path(d, "feature_heatmap_selected_proteins.csv"); data.table::fwrite(data.frame(ProteinID = feats, Source = input$feature_hm_source), source_csv); plot_expression_heatmap(data_for_analysis()$quantity[feats, , drop = FALSE], group_info(), pdf, csv, input$feature_top_hm, input$feature_hm_row_cluster, "hclust", input$feature_hm_k, max(wh[1], 3), max(wh[2], 3)); finish("feature_hm", pdf, list.files(d, pattern = "\\.csv$", full.names = TRUE), input$feature_hm_export_csv) }) })
-  observeEvent(input$run_sling, { run_analysis("sling", "Slingshot", { req(rv$data); d <- analysis_dir("sling"); wh <- pts("sling"); hm_wh <- c(input$sling_heatmap_w_pt / 72, input$sling_heatmap_h_pt / 72); run_slingshot_pseudotime(data_for_analysis()$quantity, group_info(), d, input$sling_reduction, input$sling_start, input$sling_end, wh[1], wh[2], input$sling_palette, top_n = input$sling_top, heatmap_width = hm_wh[1], heatmap_height = hm_wh[2]); finish("sling", list.files(d, pattern = "\\.pdf$", full.names = TRUE), list.files(d, pattern = "\\.(csv|txt)$", full.names = TRUE), input$sling_export_csv, "Outputs are under the selected output directory / sling.") }) })
+  observeEvent(input$run_feature_umap, { run_analysis("feature_umap", "Feature UMAP", { req(rv$data); d <- analysis_dir("feature_umap"); wh <- pts("feature_umap"); feats <- get_ml_features(input$feature_umap_source, input$feature_top_umap); feats <- intersect(feats, rownames(data_for_analysis()$quantity)); if (length(feats) < 2) stop("Feature UMAP requires at least two selected proteins present in the current quantity matrix."); used <- preprocess_expr(data_for_analysis()$quantity[feats, , drop = FALSE], TRUE, 0.5); if (nrow(used) < 2) stop("Feature UMAP requires at least two selected proteins after preprocessing."); sample_mat <- t(used); set.seed(123); nn <- min(input$feature_umap_neighbors, max(2, nrow(sample_mat)-1)); um <- uwot::umap(sample_mat, n_neighbors = nn, min_dist = input$feature_umap_min_dist, metric = "euclidean", verbose = FALSE); df <- data.frame(Sample = rownames(sample_mat), UMAP1 = um[,1], UMAP2 = um[,2]) |> left_join(group_info(), by = "Sample"); pdf <- file.path(d, "feature_UMAP.pdf"); csv <- file.path(d, "feature_UMAP_coordinates.csv"); source_csv <- file.path(d, "feature_UMAP_selected_proteins.csv"); if (input$feature_umap_export_csv) { data.table::fwrite(df, csv); data.table::fwrite(data.frame(ProteinID = rownames(used), Source = input$feature_umap_source), source_csv) }; p <- ggplot2::ggplot(df, ggplot2::aes(UMAP1, UMAP2, color = Group)) + ggplot2::geom_point(size = 2.4) + ggplot2::scale_color_manual(values = sci_palette(length(levels(group_info()$Group)), input$feature_umap_palette)) + theme_sci(); ggplot2::ggsave(pdf, p, width = wh[1], height = wh[2]); finish("feature_umap", pdf, c(csv, source_csv), input$feature_umap_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_feature_hm, { run_analysis("feature_hm", "ML selected expression heatmap", { req(rv$data); d <- analysis_dir("feature_hm"); wh <- pts("feature_hm"); feats <- get_ml_features(input$feature_hm_source, input$feature_top_hm); feats <- intersect(feats, rownames(data_for_analysis()$quantity)); if (length(feats) < 2) stop("Feature heatmap requires at least two selected proteins present in the current quantity matrix."); pdf <- file.path(d, "feature_heatmap.pdf"); csv <- file.path(d, "feature_heatmap_values.csv"); source_csv <- file.path(d, "feature_heatmap_selected_proteins.csv"); data.table::fwrite(data.frame(ProteinID = feats, Source = input$feature_hm_source), source_csv); plot_expression_heatmap(data_for_analysis()$quantity[feats, , drop = FALSE], group_info(), pdf, csv, input$feature_top_hm, input$feature_hm_row_cluster, "hclust", input$feature_hm_k, max(wh[1], 3), max(wh[2], 3)); finish("feature_hm", pdf, list.files(d, pattern = "\\.csv$", full.names = TRUE), input$feature_hm_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_sling, { run_analysis("sling", "Slingshot", { req(rv$data); d <- analysis_dir("sling"); wh <- pts("sling"); hm_wh <- c(input$sling_heatmap_w_pt / 72, input$sling_heatmap_h_pt / 72); run_slingshot_pseudotime(data_for_analysis()$quantity, group_info(), d, input$sling_reduction, input$sling_start, input$sling_end, wh[1], wh[2], input$sling_palette, top_n = input$sling_top, heatmap_width = hm_wh[1], heatmap_height = hm_wh[2]); finish("sling", list.files(d, pattern = "\\.pdf$", full.names = TRUE), list.files(d, pattern = "\\.(csv|txt)$", full.names = TRUE), input$sling_export_csv, paste(c(standard_mode_note(), "Outputs are under the selected output directory / sling."), collapse = "\n")) }) })
 
   output$outdir_text <- renderText(outdir())
   output$file_table <- renderDT({ dir.create(outdir(), recursive = TRUE, showWarnings = FALSE); files <- list.files(outdir(), recursive = TRUE, full.names = FALSE); info <- file.info(file.path(outdir(), files)); datatable(data.frame(File = files, SizeKB = round(info$size / 1024, 1), Modified = info$mtime), options = list(pageLength = 12)) })

@@ -62,6 +62,150 @@ read_result_file <- function(file) {
   dat
 }
 
+standard_matrix_zero_modes <- c("zero_is_value", "zero_is_missing")
+
+standard_matrix_zero_mode_label <- function(missingness_mode) {
+  missingness_mode <- match.arg(missingness_mode, standard_matrix_zero_modes)
+  if (missingness_mode == "zero_is_value") "0 is a valid quantitative value" else "0 represents missing or unquantified"
+}
+
+read_standard_matrix_file <- function(file) {
+  ext <- tolower(tools::file_ext(file))
+  if (!ext %in% c("csv", "tsv")) stop("Standard matrix input must be a .csv or .tsv file.")
+  first_line <- readLines(file, n = 1, warn = FALSE, encoding = "UTF-8")
+  first_line <- sub("^\ufeff", "", first_line)
+  expected_sep <- if (ext == "tsv") "\t" else ","
+  wrong_sep <- if (ext == "tsv") "," else "\t"
+  if (!grepl(expected_sep, first_line, fixed = TRUE) && grepl(wrong_sep, first_line, fixed = TRUE)) {
+    stop("File extension and delimiter do not match: .", ext, " input must use ", if (ext == "tsv") "tab" else "comma", " delimiters.")
+  }
+  dat <- data.table::fread(
+    file = file, sep = expected_sep, header = TRUE, na.strings = character(),
+    quote = "\"", data.table = FALSE, check.names = FALSE, encoding = "UTF-8",
+    colClasses = list(character = 1)
+  )
+  colnames(dat)[1] <- sub("^\ufeff", "", colnames(dat)[1])
+  if (ncol(dat) == 1) {
+    stop("Standard matrix input was read as one column. Check that the file delimiter matches the .", ext, " extension.")
+  }
+  dat
+}
+
+parse_standard_quant_value <- function(x) {
+  raw <- as.character(x)
+  trimmed <- trimws(raw)
+  explicit_missing <- is.na(raw) | trimmed == "" | tolower(trimmed) %in% c("na", "nan")
+  numeric <- rep(NA_real_, length(trimmed))
+  candidates <- !explicit_missing
+  suppressWarnings(numeric[candidates] <- as.numeric(trimmed[candidates]))
+  invalid_text <- candidates & is.na(numeric)
+  infinite <- candidates & !is.na(numeric) & !is.finite(numeric)
+  list(value = numeric, explicit_missing = explicit_missing, invalid_text = invalid_text, infinite = infinite, raw = raw)
+}
+
+summarize_bad_values <- function(values, max_values = 5) {
+  values <- unique(as.character(values))
+  values <- values[!is.na(values)]
+  paste(head(values, max_values), collapse = ", ")
+}
+
+read_standard_matrix <- function(file, missingness_mode = NULL) {
+  load_required_packages()
+  if (is.null(missingness_mode) || !nzchar(as.character(missingness_mode))) {
+    stop("Standard matrix zero handling mode must be explicitly selected: zero_is_value or zero_is_missing.")
+  }
+  missingness_mode <- match.arg(missingness_mode, standard_matrix_zero_modes)
+  raw <- read_standard_matrix_file(file)
+  if (ncol(raw) < 2) stop("Standard matrix input must contain at least two columns: one feature identifier column and at least one sample column.")
+
+  feature_colname <- colnames(raw)[1]
+  sample_names <- colnames(raw)[-1]
+  if (any(is.na(sample_names) | trimws(sample_names) == "")) stop("Standard matrix sample column names cannot be empty.")
+  dup_samples <- unique(sample_names[duplicated(sample_names)])
+  if (length(dup_samples) > 0) stop("Standard matrix sample column names must be unique. Duplicates: ", paste(dup_samples, collapse = ", "))
+
+  features <- as.character(raw[[1]])
+  feature_blank <- is.na(features) | trimws(features) == ""
+  if (all(feature_blank)) stop("The first feature identifier column cannot be entirely empty.")
+  if (any(feature_blank)) stop("Standard matrix feature identifiers cannot be blank. Blank rows: ", paste(which(feature_blank), collapse = ", "))
+  dup_features <- unique(features[duplicated(features)])
+  if (length(dup_features) > 0) stop("Standard matrix feature identifiers must be unique. Duplicates: ", paste(head(dup_features, 5), collapse = ", "), ". Please resolve duplicate features before analysis.")
+
+  qdat <- raw[, -1, drop = FALSE]
+  parsed <- lapply(qdat, parse_standard_quant_value)
+  invalid_cols <- names(parsed)[vapply(parsed, function(z) any(z$invalid_text), logical(1))]
+  if (length(invalid_cols) > 0) {
+    details <- vapply(invalid_cols, function(nm) summarize_bad_values(parsed[[nm]]$raw[parsed[[nm]]$invalid_text]), character(1))
+    stop("Standard matrix quantitative columns contain non-numeric text. ", paste(paste0(invalid_cols, ": ", details), collapse = "; "))
+  }
+  inf_cols <- names(parsed)[vapply(parsed, function(z) any(z$infinite), logical(1))]
+  if (length(inf_cols) > 0) {
+    details <- vapply(inf_cols, function(nm) summarize_bad_values(parsed[[nm]]$raw[parsed[[nm]]$infinite]), character(1))
+    stop("Standard matrix quantitative columns contain Inf or -Inf, which are invalid values. ", paste(paste0(inf_cols, ": ", details), collapse = "; "))
+  }
+
+  raw_quant_matrix <- do.call(cbind, lapply(parsed, `[[`, "value"))
+  raw_quant_matrix <- as.matrix(raw_quant_matrix)
+  storage.mode(raw_quant_matrix) <- "numeric"
+  rownames(raw_quant_matrix) <- features
+  colnames(raw_quant_matrix) <- sample_names
+
+  explicit_missing_matrix <- do.call(cbind, lapply(parsed, `[[`, "explicit_missing"))
+  explicit_missing_matrix <- as.matrix(explicit_missing_matrix)
+  rownames(explicit_missing_matrix) <- features
+  colnames(explicit_missing_matrix) <- sample_names
+
+  zero_matrix <- !is.na(raw_quant_matrix) & raw_quant_matrix == 0
+  analysis_quant_matrix <- raw_quant_matrix
+  zero_to_missing_count <- 0L
+  if (missingness_mode == "zero_is_missing") {
+    zero_to_missing_count <- sum(zero_matrix)
+    analysis_quant_matrix[zero_matrix] <- NA_real_
+  }
+  missingness_matrix <- is.na(analysis_quant_matrix)
+  all_missing_samples <- colnames(analysis_quant_matrix)[colSums(!is.na(analysis_quant_matrix)) == 0]
+  if (length(all_missing_samples) > 0) {
+    stop("Standard matrix sample columns cannot be entirely missing under the selected zero handling mode. Columns: ", paste(all_missing_samples, collapse = ", "))
+  }
+
+  counts <- data.frame(
+    Sample = sample_names,
+    Available_Quantitative_Value_Count = colSums(!is.na(analysis_quant_matrix)),
+    stringsAsFactors = FALSE
+  )
+  feature_counts <- data.frame(
+    Metric = "number of features with at least one available quantitative value",
+    Value = sum(rowSums(!is.na(analysis_quant_matrix)) > 0),
+    stringsAsFactors = FALSE
+  )
+  meta <- data.frame(RowID = features, AnalysisID = features, FeatureID = features, stringsAsFactors = FALSE)
+
+  list(
+    input_source = "standard_matrix",
+    software = "standard_matrix",
+    feature_column_name = feature_colname,
+    features = features,
+    samples = sample_names,
+    raw = raw,
+    meta = meta,
+    raw_quant_matrix = raw_quant_matrix,
+    analysis_quant_matrix = analysis_quant_matrix,
+    quantity = analysis_quant_matrix,
+    qualitative = analysis_quant_matrix,
+    ibaq = NULL,
+    missingness_matrix = missingness_matrix,
+    explicit_missing_matrix = explicit_missing_matrix,
+    missingness_mode = missingness_mode,
+    missingness_mode_label = standard_matrix_zero_mode_label(missingness_mode),
+    raw_zero_cell_count = sum(zero_matrix),
+    zero_to_missing_count = zero_to_missing_count,
+    explicit_missing_value_count = sum(explicit_missing_matrix),
+    counts = counts,
+    feature_counts = feature_counts,
+    available_quantitative_value_count = sum(!is.na(analysis_quant_matrix))
+  )
+}
+
 take_first <- function(x) {
   x <- trimws(as.character(x))
   x <- sub(";.*$", "", x)
@@ -139,12 +283,20 @@ extract_protein_data <- function(file, software = c("DIANN", "Spectronaut"), dia
   quantity <- qmat[keep, , drop = FALSE]
   ident <- ident_mat[keep, , drop = FALSE]
   if (!is.null(ibaq_mat)) ibaq_mat <- ibaq_mat[keep, , drop = FALSE]
-  rownames(quantity) <- make.unique(meta$RowID)
-  rownames(ident) <- make.unique(meta$RowID)
-  if (!is.null(ibaq_mat)) rownames(ibaq_mat) <- make.unique(meta$RowID)
+  analysis_ids <- make.unique(meta$RowID)
+  meta$AnalysisID <- analysis_ids
+  rownames(quantity) <- analysis_ids
+  rownames(ident) <- analysis_ids
+  if (!is.null(ibaq_mat)) rownames(ibaq_mat) <- analysis_ids
 
   counts <- data.frame(Sample = colnames(ident), Identified_Protein_Count = colSums(!is.na(ident)), stringsAsFactors = FALSE)
   list(raw = raw, meta = meta, quantity = as.matrix(quantity), qualitative = as.matrix(ident), ibaq = if (is.null(ibaq_mat)) NULL else as.matrix(ibaq_mat), counts = counts, software = software, samples = colnames(quantity))
+}
+
+analysis_ids_to_accessions <- function(meta, ids) {
+  if (is.null(meta) || !"Accession" %in% colnames(meta)) return(rep(NA_character_, length(ids)))
+  key_col <- if ("AnalysisID" %in% colnames(meta)) "AnalysisID" else "RowID"
+  meta$Accession[match(ids, meta[[key_col]])]
 }
 
 make_group_info <- function(samples, groups) {
@@ -154,26 +306,36 @@ make_group_info <- function(samples, groups) {
 }
 
 write_matrix_csv <- function(mat, path, id_col = "ProteinID") {
-  out <- data.frame(ProteinID = rownames(mat), mat, check.names = FALSE)
+  out <- data.frame(mat, check.names = FALSE)
+  out <- cbind(stats::setNames(data.frame(rownames(mat), check.names = FALSE), id_col), out)
   data.table::fwrite(out, path)
 }
 
-plot_identification_bar <- function(counts, group_info, out_pdf, out_csv, width = 3.3, height = 3.3, palette = "npg") {
+plot_sample_count_bar <- function(counts, group_info, count_col, out_pdf, out_csv, width = 3.3, height = 3.3, palette = "npg", y_label = "Protein groups") {
+  if (!count_col %in% colnames(counts)) stop("Count column not found: ", count_col)
   df <- dplyr::left_join(counts, group_info, by = "Sample")
   summary <- df |>
     dplyr::group_by(Group) |>
-    dplyr::summarise(Mean = mean(Identified_Protein_Count), SD = sd(Identified_Protein_Count), N = dplyr::n(), .groups = "drop")
+    dplyr::summarise(Mean = mean(.data[[count_col]]), SD = sd(.data[[count_col]]), N = dplyr::n(), .groups = "drop")
   data.table::fwrite(df, sub("\\.csv$", "_sample_counts.csv", out_csv))
   data.table::fwrite(summary, out_csv)
   cols <- sci_palette(length(unique(df$Group)), palette)
   p <- ggplot2::ggplot(summary, ggplot2::aes(Group, Mean, fill = Group)) +
     ggplot2::geom_col(width = 0.65, color = "black", linewidth = 0.25) +
     ggplot2::geom_errorbar(ggplot2::aes(ymin = Mean - SD, ymax = Mean + SD), width = 0.18, linewidth = 0.35) +
-    ggplot2::geom_jitter(data = df, ggplot2::aes(Group, Identified_Protein_Count), inherit.aes = FALSE, width = 0.09, size = 1.7) +
+    ggplot2::geom_jitter(data = df, ggplot2::aes(x = Group, y = .data[[count_col]]), inherit.aes = FALSE, width = 0.09, size = 1.7) +
     ggplot2::scale_fill_manual(values = cols) + theme_sci() + ggplot2::theme(legend.position = "none") +
-    ggplot2::labs(x = NULL, y = "Protein groups")
+    ggplot2::labs(x = NULL, y = y_label)
   ggplot2::ggsave(out_pdf, p, width = width, height = height)
   p
+}
+
+plot_identification_bar <- function(counts, group_info, out_pdf, out_csv, width = 3.3, height = 3.3, palette = "npg") {
+  plot_sample_count_bar(counts, group_info, "Identified_Protein_Count", out_pdf, out_csv, width, height, palette, "Protein groups")
+}
+
+plot_available_quantitative_bar <- function(counts, group_info, out_pdf, out_csv, width = 3.3, height = 3.3, palette = "npg") {
+  plot_sample_count_bar(counts, group_info, "Available_Quantitative_Value_Count", out_pdf, out_csv, width, height, palette, "Number of available quantitative values")
 }
 
 sci_palette <- function(n, palette = "npg") {
@@ -539,7 +701,8 @@ resolve_ml_training <- function(y, mode = "auto", train_prop = 0.7, seed = 123, 
 }
 
 parse_auto_integer <- function(value, default = NA_integer_) {
-  value <- trimws(as.character(value %||% "Auto"))
+  if (is.null(value) || length(value) == 0 || is.na(value[[1]])) return(default)
+  value <- trimws(as.character(value[[1]]))
   if (!nzchar(value) || tolower(value) == "auto") return(default)
   out <- suppressWarnings(as.integer(value))
   if (is.na(out) || out < 1) stop("Expected Auto or a positive integer, got: ", value)
