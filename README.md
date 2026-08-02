@@ -2,7 +2,14 @@
 
 ProteoPostZ, formerly named ProteoDIAPostZ, is a Windows/R/Shiny desktop-style application for post-processing protein-level DIA and DDA proteomics results and user-prepared standard quantitative matrices.
 
-Current source version: **ProteoPostZ Formal V2.0**.
+Current source version: **ProteoPostZ Formal V2.0.1**.
+
+## V2.0.1 Update Note
+
+- Added `Quantified_Protein_Count` alongside the existing `Identified_Protein_Count`.
+- Sample count tables retain both count fields, and the sample count barplot supports switching between identification count and quantified protein count.
+- FragPipe/MSFragger and PEAKS now keep identification counts separate from quantitative non-missing counts by using their existing sample-level identification evidence.
+- MaxQuant still lacks an independent sample-level identification evidence field in the current `proteinGroups.txt` importer, so identification count is currently approximated by non-missing `LFQ intensity`.
 
 ## Why The Name Changed
 
@@ -128,4 +135,4 @@ The V2.0 source checks cover:
 
 ## 中文简要说明
 
-ProteoPostZ Formal V2.0 是 ProteoDIAPostZ V1.4 的后续版本。由于软件范围已经从 DIA 扩展到 DIA、DDA 以及用户整理的标准定量矩阵，软件名称去掉了 DIA。当前版本仍以蛋白水平结果为核心，推荐默认使用 accession 作为行标识，保留 PDF 矢量图和 CSV 导出，并新增 DDA 蛋白定量表输入、t-SNE、机器学习评估细节、`analysis_manifest.json` 和 `analysis_summary.html`。
+ProteoPostZ Formal V2.0.1 是 ProteoDIAPostZ V1.4 的后续版本。由于软件范围已经从 DIA 扩展到 DIA、DDA 以及用户整理的标准定量矩阵，软件名称去掉了 DIA。当前版本仍以蛋白水平结果为核心，推荐默认使用 accession 作为行标识，保留 PDF 矢量图和 CSV 导出，并新增 DDA 蛋白定量表输入、t-SNE、机器学习评估细节、`analysis_manifest.json` 和 `analysis_summary.html`。

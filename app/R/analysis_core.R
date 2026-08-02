@@ -294,11 +294,12 @@ read_standard_matrix <- function(file, missingness_mode = NULL) {
     stop("Standard matrix sample columns cannot be entirely missing under the selected zero handling mode. Columns: ", paste(all_missing_samples, collapse = ", "))
   }
 
-  counts <- data.frame(
-    Sample = sample_names,
-    Available_Quantitative_Value_Count = colSums(!is.na(analysis_quant_matrix)),
-    stringsAsFactors = FALSE
+  counts <- make_sample_count_table(
+    analysis_quant_matrix,
+    analysis_quant_matrix,
+    identified_available = FALSE
   )
+  counts$Available_Quantitative_Value_Count <- counts$Quantified_Protein_Count
   feature_counts <- data.frame(
     Metric = "number of features with at least one available quantitative value",
     Value = sum(rowSums(!is.na(analysis_quant_matrix)) > 0),
@@ -329,6 +330,21 @@ read_standard_matrix <- function(file, missingness_mode = NULL) {
     counts = counts,
     feature_counts = feature_counts,
     available_quantitative_value_count = sum(!is.na(analysis_quant_matrix))
+  )
+}
+
+make_sample_count_table <- function(quantity, qualitative = NULL, identified_available = TRUE) {
+  quantity <- as.matrix(quantity)
+  if (is.null(qualitative)) qualitative <- quantity
+  qualitative <- as.matrix(qualitative)
+  if (!identical(colnames(quantity), colnames(qualitative))) {
+    stop("Quantity and qualitative matrices must share the same sample columns for count summaries.")
+  }
+  data.frame(
+    Sample = colnames(quantity),
+    Identified_Protein_Count = if (isTRUE(identified_available)) colSums(!is.na(qualitative)) else rep(NA_integer_, ncol(quantity)),
+    Quantified_Protein_Count = colSums(!is.na(quantity)),
+    stringsAsFactors = FALSE
   )
 }
 
@@ -435,7 +451,7 @@ extract_protein_data <- function(file, software = c("DIANN", "Spectronaut"), dia
   rownames(ident) <- analysis_ids
   if (!is.null(ibaq_mat)) rownames(ibaq_mat) <- analysis_ids
 
-  counts <- data.frame(Sample = colnames(ident), Identified_Protein_Count = colSums(!is.na(ident)), stringsAsFactors = FALSE)
+  counts <- make_sample_count_table(quantity, ident)
   list(raw = raw, meta = meta, quantity = as.matrix(quantity), qualitative = as.matrix(ident), ibaq = if (is.null(ibaq_mat)) NULL else as.matrix(ibaq_mat), counts = counts, software = software, samples = colnames(quantity))
 }
 
@@ -565,7 +581,7 @@ extract_maxquant_protein_data <- function(file, row_id = c("protein_name", "gene
   rownames(quantity) <- analysis_ids
   quantity <- as.matrix(quantity)
   storage.mode(quantity) <- "numeric"
-  counts <- data.frame(Sample = colnames(quantity), Identified_Protein_Count = colSums(!is.na(quantity)), stringsAsFactors = FALSE)
+  counts <- make_sample_count_table(quantity, quantity)
   list(
     raw = raw,
     raw_all = raw_all,
@@ -579,6 +595,7 @@ extract_maxquant_protein_data <- function(file, row_id = c("protein_name", "gene
     input_source = "maxquant",
     data_level = "protein",
     format_evidence = "MaxQuant proteinGroups.txt: filtered reverse, contaminant, and only-identified-by-site rows; sample LFQ intensity columns are used for label-free quantification; zeros are treated as missing.",
+    count_approximation_note_en = "MaxQuant identification count is approximated by non-missing LFQ intensity in the current proteinGroups.txt importer.",
     features = rownames(quantity),
     samples = colnames(quantity)
   )
@@ -640,7 +657,7 @@ extract_fragpipe_protein_data <- function(file, row_id = c("protein_name", "gene
   ident <- as.matrix(ident)
   storage.mode(quantity) <- "numeric"
   storage.mode(ident) <- "numeric"
-  counts <- data.frame(Sample = colnames(ident), Identified_Protein_Count = colSums(!is.na(ident)), stringsAsFactors = FALSE)
+  counts <- make_sample_count_table(quantity, ident)
   list(
     raw = raw,
     meta = meta,
@@ -739,7 +756,7 @@ extract_peaks_protein_data <- function(file, row_id = c("protein_name", "gene_na
   ident <- as.matrix(ident)
   storage.mode(quantity) <- "numeric"
   storage.mode(ident) <- "numeric"
-  counts <- data.frame(Sample = colnames(ident), Identified_Protein_Count = colSums(!is.na(ident)), stringsAsFactors = FALSE)
+  counts <- make_sample_count_table(quantity, ident)
   list(
     raw = raw,
     raw_all = raw_all,
@@ -802,7 +819,7 @@ extract_dda_protein_data <- function(file, software = c("fragpipe", "proteome_di
   rownames(quantity) <- analysis_ids
   quantity <- as.matrix(quantity)
   storage.mode(quantity) <- "numeric"
-  counts <- data.frame(Sample = colnames(quantity), Identified_Protein_Count = colSums(!is.na(quantity)), stringsAsFactors = FALSE)
+  counts <- make_sample_count_table(quantity, quantity)
   list(
     raw = raw,
     meta = meta,
@@ -875,12 +892,13 @@ write_matrix_csv <- function(mat, path, id_col = "ProteinID") {
   data.table::fwrite(out, path)
 }
 
-plot_sample_count_bar <- function(counts, group_info, count_col, out_pdf, out_csv, width = 3.3, height = 3.3, palette = "npg", y_label = "Protein groups") {
+plot_sample_count_bar <- function(counts, group_info, count_col, out_pdf, out_csv, width = 3.3, height = 3.3, palette = "npg", y_label = "Protein groups", plot_title = NULL) {
   if (!count_col %in% colnames(counts)) stop("Count column not found: ", count_col)
   df <- dplyr::left_join(counts, group_info, by = "Sample")
   summary <- df |>
     dplyr::group_by(Group) |>
-    dplyr::summarise(Mean = mean(.data[[count_col]]), SD = sd(.data[[count_col]]), N = dplyr::n(), .groups = "drop")
+    dplyr::summarise(Mean = mean(.data[[count_col]], na.rm = TRUE), SD = sd(.data[[count_col]], na.rm = TRUE), N = dplyr::n(), .groups = "drop")
+  summary$Count_Column <- count_col
   data.table::fwrite(df, sub("\\.csv$", "_sample_counts.csv", out_csv))
   data.table::fwrite(summary, out_csv)
   cols <- sci_palette(length(unique(df$Group)), palette)
@@ -889,7 +907,7 @@ plot_sample_count_bar <- function(counts, group_info, count_col, out_pdf, out_cs
     ggplot2::geom_errorbar(ggplot2::aes(ymin = Mean - SD, ymax = Mean + SD), width = 0.18, linewidth = 0.35) +
     ggplot2::geom_jitter(data = df, ggplot2::aes(x = Group, y = .data[[count_col]]), inherit.aes = FALSE, width = 0.09, size = 1.7) +
     ggplot2::scale_fill_manual(values = cols) + theme_sci() + ggplot2::theme(legend.position = "none") +
-    ggplot2::labs(x = NULL, y = y_label)
+    ggplot2::labs(x = NULL, y = y_label, title = plot_title %||% y_label)
   ggplot2::ggsave(out_pdf, p, width = width, height = height)
   p
 }

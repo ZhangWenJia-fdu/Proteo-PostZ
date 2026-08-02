@@ -1,4 +1,4 @@
-# ProteoPostZ Formal V2.0
+# ProteoPostZ Formal V2.0.1
 # Developed by Wenjia Zhang
 
 options(shiny.maxRequestSize = 1024^3)
@@ -10,7 +10,7 @@ library(dplyr)
 source(file.path("R", "analysis_core.R"), encoding = "UTF-8")
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
-app_version <- "Formal V2.0"
+app_version <- "Formal V2.0.1"
 app_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 package_root <- normalizePath(file.path(app_root, ".."), winslash = "/", mustWork = FALSE)
 annotation_dir <- file.path(app_root, "annotations")
@@ -222,7 +222,7 @@ ui <- page_navbar(
   ),
   nav_panel("Qualitative plots",
     layout_columns(col_widths = c(6, 6),
-      analysis_card("idbar", "Protein groups identification barplot", tagList(size_inputs("idbar"), palette_input("idbar"), export_input("idbar"), actionButton("run_idbar", "Generate barplot", class = "btn-primary"))),
+      analysis_card("idbar", "Sample protein count barplot", tagList(uiOutput("idbar_count_control"), uiOutput("idbar_count_note"), size_inputs("idbar"), palette_input("idbar"), export_input("idbar"), actionButton("run_idbar", "Generate barplot", class = "btn-primary"))),
       analysis_card("venn", "Venn diagram", tagList(venn_upset_note, numericInput("venn_min_reps", "Minimum replicates detected in group", 1, min = 1, step = 1), size_inputs("venn"), palette_input("venn"), export_input("venn"), actionButton("run_venn", "Generate Venn", class = "btn-primary"))),
       analysis_card("upset", "UpSet plot", tagList(venn_upset_note, numericInput("upset_min_reps", "Minimum replicates detected in group", 1, min = 1, step = 1), size_inputs("upset"), export_input("upset"), actionButton("run_upset", "Generate UpSet", class = "btn-primary"))),
       analysis_card("phys", "Physicochemical property distributions", tagList(numericInput("phys_min_reps", "Minimum replicates detected in group", 1, min = 1, step = 1), selectInput("annotation_preset", "Built-in annotation", choices = c("Human reviewed Swiss-Prot" = "human", "Mouse reviewed Swiss-Prot" = "mouse", "C. elegans UniProtKB Swiss-Prot + TrEMBL" = "celegans", "Custom annotation path below" = "custom"), selected = "human"), textInput("annotation_file", "Custom annotation table", value = default_annotation_file), size_inputs("phys"), palette_input("phys"), export_input("phys"), actionButton("run_phys", "Generate property plots", class = "btn-primary")))
@@ -313,6 +313,46 @@ server <- function(input, output, session) {
 
   is_standard_matrix_data <- function(dat = rv$data) identical(dat$input_family %||% dat$input_source %||% dat$software %||% "", "standard_matrix")
   is_dda_data <- function(dat = rv$data) identical(dat$input_family %||% "", "dda")
+  count_metric_choices <- function(dat = rv$data) {
+    if (is_standard_matrix_data(dat)) {
+      c("Quantified protein count" = "Quantified_Protein_Count")
+    } else {
+      c(
+        "Identification count" = "Identified_Protein_Count",
+        "Quantified protein count" = "Quantified_Protein_Count"
+      )
+    }
+  }
+  active_count_column <- reactive({
+    req(rv$data)
+    choices <- unname(count_metric_choices(rv$data))
+    requested <- input$count_metric %||% if (is_standard_matrix_data()) "Quantified_Protein_Count" else "Identified_Protein_Count"
+    if (requested %in% choices) requested else choices[[1]]
+  })
+  count_metric_text <- function(count_col = active_count_column()) {
+    switch(
+      count_col,
+      Identified_Protein_Count = list(
+        title = "Identification count",
+        y_label = "Identified protein count",
+        barplot_title = "Sample identification count"
+      ),
+      Quantified_Protein_Count = list(
+        title = "Quantified protein count",
+        y_label = "Quantified protein count",
+        barplot_title = if (is_standard_matrix_data()) {
+          "Available quantitative values"
+        } else {
+          "Sample quantified protein count"
+        }
+      ),
+      list(
+        title = count_col,
+        y_label = count_col,
+        barplot_title = count_col
+      )
+    )
+  }
   clear_loaded_input <- function() {
     old_pngs <- unlist(rv$preview_files, use.names = FALSE)
     if (length(old_pngs) > 0) unlink(old_pngs[file.exists(old_pngs)], force = TRUE)
@@ -665,7 +705,13 @@ server <- function(input, output, session) {
     sample_name_problem()
   })
   output$input_error <- renderText({ rv$load_error %||% "" })
-  output$input_overview_title <- renderUI({ if (is_standard_matrix_data()) "Available quantitative values overview" else if (is_dda_data()) "DDA protein-level quantitative entries" else "Detected protein groups" })
+  output$input_overview_title <- renderUI({
+    if (is_standard_matrix_data()) {
+      "Available quantitative values overview"
+    } else {
+      "Sample count"
+    }
+  })
   output$n_proteins <- renderText({ req(rv$data); paste0(nrow(rv$data$quantity), if (is_standard_matrix_data()) " features" else " proteins") })
   output$n_samples <- renderText({ req(rv$data); paste0(ncol(rv$data$quantity), " samples") })
   output$n_groups <- renderText({ req(rv$data); paste0(length(unique(group_info()$Group)), " groups") })
@@ -673,6 +719,31 @@ server <- function(input, output, session) {
     req(rv$data)
     df <- if (is_standard_matrix_data()) standard_input_summary_df(rv$data) else input_format_summary_df(rv$data)
     datatable(df, rownames = FALSE, options = list(dom = "t", pageLength = 12))
+  })
+  output$idbar_count_control <- renderUI({
+    req(rv$data)
+    selectInput(
+      "count_metric",
+      "Count type",
+      choices = count_metric_choices(rv$data),
+      selected = if (is_standard_matrix_data()) "Quantified_Protein_Count" else "Identified_Protein_Count"
+    )
+  })
+  output$idbar_count_note <- renderUI({
+    req(rv$data)
+    if (is_standard_matrix_data()) {
+      return(div(
+        class = "small-note",
+        "Standard quantitative matrix does not provide independent sample-level identification evidence. Counts shown here are available quantitative values only."
+      ))
+    }
+    if (identical(rv$data$input_source %||% "", "maxquant")) {
+      return(div(
+        class = "small-note",
+        rv$data$count_approximation_note_en %||% ""
+      ))
+    }
+    NULL
   })
   output$counts_table <- renderDT({
     req(rv$data)
@@ -688,7 +759,44 @@ server <- function(input, output, session) {
   output$volcano_groups <- renderUI({ req(rv$data); gs <- levels(group_info()$Group); tagList(selectInput("volcano_a", "Reference group", choices = gs), selectInput("volcano_b", "Comparison group", choices = gs, selected = gs[min(2, length(gs))])) })
   output$slingshot_groups <- renderUI({ req(rv$data); gs <- levels(group_info()$Group); tagList(selectInput("sling_start", "Start group", choices = gs, selected = gs[1]), selectInput("sling_end", "Optional end group", choices = c("None", gs), selected = "None")) })
 
-  observeEvent(input$run_idbar, { run_analysis("idbar", if (is_standard_matrix_data()) "Available quantitative values overview" else "Identification barplot", { req(rv$data); d <- analysis_dir("idbar"); wh <- pts("idbar"); if (is_standard_matrix_data()) { pdf <- file.path(d, "available_quantitative_values_barplot.pdf"); csv <- file.path(d, "available_quantitative_values_group_summary.csv"); plot_available_quantitative_bar(data_for_analysis()$counts, group_info(), pdf, csv, wh[1], wh[2], input$idbar_palette) } else { pdf <- file.path(d, "identification_barplot.pdf"); csv <- file.path(d, "identification_group_summary.csv"); plot_identification_bar(data_for_analysis()$counts, group_info(), pdf, csv, wh[1], wh[2], input$idbar_palette) }; finish("idbar", pdf, c(csv, sub("\\.csv$", "_sample_counts.csv", csv)), input$idbar_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_idbar, {
+    run_analysis("idbar", count_metric_text()$barplot_title, {
+      req(rv$data)
+      d <- analysis_dir("idbar")
+      wh <- pts("idbar")
+      count_col <- active_count_column()
+      labels <- count_metric_text(count_col)
+      if (is_standard_matrix_data()) {
+        pdf <- file.path(d, "available_quantitative_values_barplot.pdf")
+        csv <- file.path(d, "available_quantitative_values_group_summary.csv")
+      } else if (identical(count_col, "Identified_Protein_Count")) {
+        pdf <- file.path(d, "identification_barplot.pdf")
+        csv <- file.path(d, "identification_group_summary.csv")
+      } else {
+        pdf <- file.path(d, "quantified_protein_barplot.pdf")
+        csv <- file.path(d, "quantified_protein_group_summary.csv")
+      }
+      plot_sample_count_bar(
+        data_for_analysis()$counts,
+        group_info(),
+        count_col,
+        pdf,
+        csv,
+        wh[1],
+        wh[2],
+        input$idbar_palette,
+        y_label = labels$y_label,
+        plot_title = labels$barplot_title
+      )
+      finish(
+        "idbar",
+        pdf,
+        c(csv, sub("\\.csv$", "_sample_counts.csv", csv)),
+        input$idbar_export_csv,
+        paste(c(labels$title, standard_mode_note()), collapse = "\n")
+      )
+    })
+  })
 
   make_sets <- function(min_reps) identified_by_group(data_for_analysis()$qualitative, group_info(), min_reps)
   validate_current_sets <- function(sets, min_reps, analysis) {
