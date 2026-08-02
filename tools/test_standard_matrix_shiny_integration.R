@@ -11,8 +11,6 @@ tmp <- file.path(package_root, 'outputs', 'standard_matrix_shiny_test')
 dir.create(tmp, recursive = TRUE, showWarnings = FALSE)
 write_utf8 <- function(path, lines) writeLines(lines, path, useBytes = TRUE)
 expect_true <- function(x, label) if (!isTRUE(x)) stop(label)
-diann_test_file <- Sys.getenv('PROTEODIAPOSTZ_DIANN_TEST_FILE', '')
-spectronaut_test_file <- Sys.getenv('PROTEODIAPOSTZ_SPECTRONAUT_TEST_FILE', '')
 
 csv <- file.path(tmp, 'ui_standard.csv')
 write_utf8(csv, c(
@@ -36,7 +34,7 @@ bad <- file.path(tmp, 'bad_standard.csv')
 write_utf8(bad, c('Feature,S1,S2', 'F1,abc,1'))
 
 shiny::testServer(server, {
-  session$setInputs(software = 'standard_matrix', file_path = csv, outdir = tmp, standard_zero_mode = '')
+  session$setInputs(input_family = 'standard_matrix', file_path = csv, outdir = tmp, standard_zero_mode = '')
   session$setInputs(load_data = 1)
   session$flushReact()
   expect_true(is.null(rv$data), 'standard matrix loaded without zero mode')
@@ -70,10 +68,10 @@ shiny::testServer(server, {
   session$flushReact()
   expect_true(rv$data$available_quantitative_value_count == 16, 'standard TSV zero_is_missing available count incorrect')
 
-  session$setInputs(software = 'diann')
+  session$setInputs(input_family = 'dia', dia_format = 'diann')
   session$flushReact()
   expect_true(is.null(rv$data), 'switching input type did not clear loaded standard matrix')
-  session$setInputs(software = 'standard_matrix', file_path = bad, standard_zero_mode = 'zero_is_value')
+  session$setInputs(input_family = 'standard_matrix', file_path = bad, standard_zero_mode = 'zero_is_value')
   session$setInputs(load_data = 6)
   session$flushReact()
   expect_true(is.null(rv$data), 'bad standard matrix should not load')
@@ -81,22 +79,14 @@ shiny::testServer(server, {
 })
 
 source('R/analysis_core.R')
-diann_dims <- 'skipped'
-if (nzchar(diann_test_file) && file.exists(diann_test_file)) {
-  diann <- extract_protein_data(diann_test_file, 'DIANN', 'd', 'protein_name')
-  diann_group <- make_group_info(diann$samples, rep(c('G1', 'G2'), each = 4))
-  plot_rank_abundance(diann$quantity, diann_group, file.path(tmp, 'diann_rank.pdf'), file.path(tmp, 'diann_rank.csv'), 3, 3)
-  expect_true(file.exists(file.path(tmp, 'diann_rank.pdf')), 'DIA-NN rank module did not produce PDF')
-  diann_dims <- paste0(nrow(diann$quantity), 'x', ncol(diann$quantity))
-}
+diann <- extract_protein_data('F:/test/DIANNreport.pg_matrix.tsv', 'DIANN', 'd', 'protein_name')
+diann_group <- make_group_info(diann$samples, rep(c('G1', 'G2'), each = 4))
+plot_rank_abundance(diann$quantity, diann_group, file.path(tmp, 'diann_rank.pdf'), file.path(tmp, 'diann_rank.csv'), 3, 3)
+expect_true(file.exists(file.path(tmp, 'diann_rank.pdf')), 'DIA-NN rank module did not produce PDF')
 
-spectronaut_dims <- 'skipped'
-if (nzchar(spectronaut_test_file) && file.exists(spectronaut_test_file)) {
-  spectronaut <- extract_protein_data(spectronaut_test_file, 'Spectronaut', 'd', 'protein_name')
-  spectronaut_group <- make_group_info(spectronaut$samples, rep(c('G1', 'G2'), each = 4))
-  plot_rank_abundance(spectronaut$quantity, spectronaut_group, file.path(tmp, 'spectronaut_rank.pdf'), file.path(tmp, 'spectronaut_rank.csv'), 3, 3)
-  expect_true(file.exists(file.path(tmp, 'spectronaut_rank.pdf')), 'Spectronaut rank module did not produce PDF')
-  spectronaut_dims <- paste0(nrow(spectronaut$quantity), 'x', ncol(spectronaut$quantity))
-}
+spectronaut <- extract_protein_data('F:/test/Spectronaut20260428_141042_20260428-YGQ-Celegans-repeatabilitytest_Report_1_8.tsv', 'Spectronaut', 'd', 'protein_name')
+spectronaut_group <- make_group_info(spectronaut$samples, rep(c('G1', 'G2'), each = 4))
+plot_rank_abundance(spectronaut$quantity, spectronaut_group, file.path(tmp, 'spectronaut_rank.pdf'), file.path(tmp, 'spectronaut_rank.csv'), 3, 3)
+expect_true(file.exists(file.path(tmp, 'spectronaut_rank.pdf')), 'Spectronaut rank module did not produce PDF')
 
-cat('STANDARD_MATRIX_SHINY_TEST_OK csv_value=18 csv_missing=16 tsv_value=18 tsv_missing=16 diann=', diann_dims, ' spectronaut=', spectronaut_dims, '\n', sep = '')
+cat('STANDARD_MATRIX_SHINY_TEST_OK csv_value=18 csv_missing=16 tsv_value=18 tsv_missing=16 diann=', nrow(diann$quantity), 'x', ncol(diann$quantity), ' spectronaut=', nrow(spectronaut$quantity), 'x', ncol(spectronaut$quantity), '\n', sep = '')

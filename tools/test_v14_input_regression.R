@@ -18,39 +18,29 @@ expect_error <- function(expr, pattern) {
   if (!grepl(pattern, err, ignore.case = TRUE)) stop('Expected error matching ', pattern, ' but got: ', err)
   invisible(err)
 }
-diann_test_file <- Sys.getenv('PROTEODIAPOSTZ_DIANN_TEST_FILE', '')
-spectronaut_test_file <- Sys.getenv('PROTEODIAPOSTZ_SPECTRONAUT_TEST_FILE', '')
 
 # DIA-NN regression: load, sample names, identification counts, one identification module, one quantitative module.
-diann_dims <- 'skipped'
-if (nzchar(diann_test_file) && file.exists(diann_test_file)) {
-  diann <- extract_protein_data(diann_test_file, 'DIANN', 'd', 'protein_name')
-  expect_true(nrow(diann$quantity) == 4862 && ncol(diann$quantity) == 8, 'DIA-NN quantity dimensions changed')
-  expect_true(identical(diann$samples, colnames(diann$quantity)), 'DIA-NN sample names not aligned with quantity matrix')
-  expect_true('Identified_Protein_Count' %in% colnames(diann$counts), 'DIA-NN identification count column missing')
-  expect_true('AnalysisID' %in% colnames(diann$meta) && identical(diann$meta$AnalysisID, rownames(diann$quantity)), 'DIA-NN meta AnalysisID does not track actual matrix row names')
-  diann_group <- make_group_info(diann$samples, rep(c('G1', 'G2'), each = 4))
-  plot_identification_bar(diann$counts, diann_group, file.path(tmp, 'diann_idbar.pdf'), file.path(tmp, 'diann_idbar.csv'), 3, 3)
-  plot_rank_abundance(diann$quantity, diann_group, file.path(tmp, 'diann_rank.pdf'), file.path(tmp, 'diann_rank.csv'), 3, 3)
-  expect_true(all(file.exists(file.path(tmp, c('diann_idbar.pdf', 'diann_rank.pdf')))), 'DIA-NN regression output missing')
-  diann_dims <- paste0(nrow(diann$quantity), 'x', ncol(diann$quantity))
-}
+diann <- extract_protein_data('F:/test/DIANNreport.pg_matrix.tsv', 'DIANN', 'd', 'protein_name')
+expect_true(nrow(diann$quantity) == 4862 && ncol(diann$quantity) == 8, 'DIA-NN quantity dimensions changed')
+expect_true(identical(diann$samples, colnames(diann$quantity)), 'DIA-NN sample names not aligned with quantity matrix')
+expect_true('Identified_Protein_Count' %in% colnames(diann$counts), 'DIA-NN identification count column missing')
+expect_true('AnalysisID' %in% colnames(diann$meta) && identical(diann$meta$AnalysisID, rownames(diann$quantity)), 'DIA-NN meta AnalysisID does not track actual matrix row names')
+diann_group <- make_group_info(diann$samples, rep(c('G1', 'G2'), each = 4))
+plot_identification_bar(diann$counts, diann_group, file.path(tmp, 'diann_idbar.pdf'), file.path(tmp, 'diann_idbar.csv'), 3, 3)
+plot_rank_abundance(diann$quantity, diann_group, file.path(tmp, 'diann_rank.pdf'), file.path(tmp, 'diann_rank.csv'), 3, 3)
+expect_true(all(file.exists(file.path(tmp, c('diann_idbar.pdf', 'diann_rank.pdf')))), 'DIA-NN regression output missing')
 
 # Spectronaut regression: load, sample names, PG.IBAQ identification semantics, one identification module, one quantitative module.
-spectronaut_dims <- 'skipped'
-if (nzchar(spectronaut_test_file) && file.exists(spectronaut_test_file)) {
-  spec <- extract_protein_data(spectronaut_test_file, 'Spectronaut', 'd', 'protein_name')
-  expect_true(nrow(spec$quantity) == 3734 && ncol(spec$quantity) == 8, 'Spectronaut quantity dimensions changed')
-  expect_true(!is.null(spec$ibaq) && identical(colnames(spec$ibaq), colnames(spec$quantity)), 'Spectronaut PG.IBAQ qualitative matrix not aligned')
-  expect_true(identical(spec$samples, colnames(spec$quantity)), 'Spectronaut sample names not aligned with quantity matrix')
-  expect_true(all(spec$counts$Identified_Protein_Count == colSums(!is.na(spec$ibaq))), 'Spectronaut identification counts no longer use PG.IBAQ')
-  expect_true('AnalysisID' %in% colnames(spec$meta) && identical(spec$meta$AnalysisID, rownames(spec$quantity)), 'Spectronaut meta AnalysisID does not track actual matrix row names')
-  spec_group <- make_group_info(spec$samples, rep(c('G1', 'G2'), each = 4))
-  plot_identification_bar(spec$counts, spec_group, file.path(tmp, 'spectronaut_idbar.pdf'), file.path(tmp, 'spectronaut_idbar.csv'), 3, 3)
-  plot_rank_abundance(spec$quantity, spec_group, file.path(tmp, 'spectronaut_rank.pdf'), file.path(tmp, 'spectronaut_rank.csv'), 3, 3)
-  expect_true(all(file.exists(file.path(tmp, c('spectronaut_idbar.pdf', 'spectronaut_rank.pdf')))), 'Spectronaut regression output missing')
-  spectronaut_dims <- paste0(nrow(spec$quantity), 'x', ncol(spec$quantity))
-}
+spec <- extract_protein_data('F:/test/Spectronaut20260428_141042_20260428-YGQ-Celegans-repeatabilitytest_Report_1_8.tsv', 'Spectronaut', 'd', 'protein_name')
+expect_true(nrow(spec$quantity) == 3734 && ncol(spec$quantity) == 8, 'Spectronaut quantity dimensions changed')
+expect_true(!is.null(spec$ibaq) && identical(colnames(spec$ibaq), colnames(spec$quantity)), 'Spectronaut PG.IBAQ qualitative matrix not aligned')
+expect_true(identical(spec$samples, colnames(spec$quantity)), 'Spectronaut sample names not aligned with quantity matrix')
+expect_true(all(spec$counts$Identified_Protein_Count == colSums(!is.na(spec$ibaq))), 'Spectronaut identification counts no longer use PG.IBAQ')
+expect_true('AnalysisID' %in% colnames(spec$meta) && identical(spec$meta$AnalysisID, rownames(spec$quantity)), 'Spectronaut meta AnalysisID does not track actual matrix row names')
+spec_group <- make_group_info(spec$samples, rep(c('G1', 'G2'), each = 4))
+plot_identification_bar(spec$counts, spec_group, file.path(tmp, 'spectronaut_idbar.pdf'), file.path(tmp, 'spectronaut_idbar.csv'), 3, 3)
+plot_rank_abundance(spec$quantity, spec_group, file.path(tmp, 'spectronaut_rank.pdf'), file.path(tmp, 'spectronaut_rank.csv'), 3, 3)
+expect_true(all(file.exists(file.path(tmp, c('spectronaut_idbar.pdf', 'spectronaut_rank.pdf')))), 'Spectronaut regression output missing')
 
 dup_meta <- data.frame(
   RowID = c('DuplicateName', 'DuplicateName', 'UniqueName'),
@@ -111,7 +101,7 @@ expect_error(read_standard_matrix(std_csv), 'zero handling mode')
 
 # Shiny state transitions and error recovery.
 shiny::testServer(server, {
-  session$setInputs(software = 'standard_matrix', file_path = std_csv, outdir = tmp, standard_zero_mode = '')
+  session$setInputs(input_family = 'standard_matrix', file_path = std_csv, outdir = tmp, standard_zero_mode = '')
   session$setInputs(load_data = 1)
   session$flushReact()
   expect_true(is.null(rv$data) && grepl('select how zero', rv$load_error), 'missing zero-mode did not block standard matrix load')
@@ -128,7 +118,7 @@ shiny::testServer(server, {
   session$setInputs(load_data = 4)
   session$flushReact()
   expect_true(!is.null(rv$data) && rv$data$available_quantitative_value_count == 3, 'Shiny did not recover after bad standard matrix')
-  session$setInputs(software = 'spectronaut')
+  session$setInputs(input_family = 'dia', dia_format = 'spectronaut')
   session$flushReact()
   expect_true(is.null(rv$data), 'Shiny input source switch did not clear standard matrix state')
 })
@@ -173,8 +163,8 @@ slingshot_try <- tryCatch({
 })
 expect_true(all(file.exists(file.path(tmp, c('standard_cor.pdf', 'standard_exprhm.pdf', 'standard_volcano.pdf')))), 'standard matrix downstream plots missing')
 
-cat('V14_INPUT_REGRESSION_OK diann=', diann_dims,
-    ' spectronaut=', spectronaut_dims,
+cat('V14_INPUT_REGRESSION_OK diann=', nrow(diann$quantity), 'x', ncol(diann$quantity),
+    ' spectronaut=', nrow(spec$quantity), 'x', ncol(spec$quantity),
     ' standard_csv_A=', std_a$available_quantitative_value_count,
     ' standard_csv_B=', std_b$available_quantitative_value_count,
     ' standard_tsv_A=', std_tsv_a$available_quantitative_value_count,

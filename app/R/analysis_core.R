@@ -1,5 +1,7 @@
-# ProteoDIAPostZ core functions
+# ProteoPostZ core functions
 # Developed by Wenjia Zhang
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b
 
 dependency_manifest <- list(
   cran_runtime = c(
@@ -60,6 +62,130 @@ read_result_file <- function(file) {
   colnames(dat) <- trimws(colnames(dat))
   colnames(dat)[1] <- sub("^\ufeff", "", colnames(dat)[1])
   dat
+}
+
+has_any_col <- function(dat, candidates) {
+  any(candidates %in% colnames(dat))
+}
+
+grep_cols <- function(dat, pattern, ignore.case = TRUE) {
+  grep(pattern, colnames(dat), value = TRUE, ignore.case = ignore.case)
+}
+
+first_present_col <- function(dat, candidates) {
+  hit <- candidates[candidates %in% colnames(dat)]
+  if (length(hit) > 0) hit[[1]] else NA_character_
+}
+
+diann_annotation_columns <- function() {
+  c(
+    "Protein.Group", "Protein.Ids", "Protein.Names", "Genes", "First.Protein.Description",
+    "N.Sequences", "N.Proteotypic.Sequences", "Genes.Quantity", "Genes.Normalised",
+    "Protein.Q.Value", "PG.Q.Value", "Global.Q.Value", "Q.Value"
+  )
+}
+
+diann_quantity_columns <- function(dat) {
+  cols <- colnames(dat)
+  direct <- grep("\\.(d|raw|wiff)$", cols, value = TRUE, ignore.case = TRUE)
+  if (length(direct) > 0) return(direct)
+
+  annotation_idx <- which(cols %in% diann_annotation_columns())
+  if (length(annotation_idx) > 0 && max(annotation_idx) < length(cols)) {
+    candidates <- cols[seq.int(max(annotation_idx) + 1, length(cols))]
+  } else {
+    candidates <- setdiff(cols, diann_annotation_columns())
+  }
+  numeric_fraction <- vapply(candidates, function(col) {
+    vals <- suppressWarnings(as.numeric(take_first(dat[[col]])))
+    mean(!is.na(vals))
+  }, numeric(1))
+  candidates[numeric_fraction > 0]
+}
+
+detect_diann_signature <- function(dat) {
+  has_ids <- has_any_col(dat, c("Protein.Group", "Protein.Ids", "Protein.Names", "Genes"))
+  sample_cols <- diann_quantity_columns(dat)
+  if (has_ids && length(sample_cols) > 0) {
+    return(paste0("DIA-NN signature: protein annotation columns plus ", length(sample_cols), " sample quantity columns."))
+  }
+  NULL
+}
+
+detect_spectronaut_signature <- function(dat) {
+  qcols <- grep_cols(dat, "PG\\.Quantity$")
+  icols <- grep_cols(dat, "PG\\.IBAQ$")
+  if (length(qcols) > 0 && length(icols) > 0) {
+    return(paste0("Spectronaut signature: ", length(qcols), " PG.Quantity columns and ", length(icols), " PG.IBAQ columns."))
+  }
+  NULL
+}
+
+detect_maxquant_signature <- function(dat) {
+  qcols <- grep_cols(dat, "^LFQ intensity ")
+  if (length(qcols) > 0 && has_any_col(dat, c("Gene names", "Protein names", "Majority protein IDs", "Protein IDs"))) {
+    return(paste0("MaxQuant signature: ", length(qcols), " LFQ intensity columns."))
+  }
+  NULL
+}
+
+detect_fragpipe_signature <- function(dat) {
+  qcols <- grep_cols(dat, " MaxLFQ Intensity$")
+  if (length(qcols) > 0 && has_any_col(dat, c("Protein", "Protein ID", "Gene", "Description"))) {
+    return(paste0("FragPipe/MSFragger signature: ", length(qcols), " sample MaxLFQ Intensity columns in combined_protein.tsv."))
+  }
+  NULL
+}
+
+detect_proteome_discoverer_signature <- function(dat) {
+  qcols <- grep_cols(dat, "^Abundance")
+  if (length(qcols) > 0 && has_any_col(dat, c("Accession", "Gene Symbol", "Description"))) {
+    return(paste0("Proteome Discoverer signature: ", length(qcols), " Abundance columns."))
+  }
+  NULL
+}
+
+detect_peaks_signature <- function(dat) {
+  qcols <- grep_cols(dat, "(^Area[: ]| Area$|^Area$)")
+  if (length(qcols) > 0 && has_any_col(dat, c("Protein ID", "Protein Group", "Accession", "Gene"))) {
+    group_note <- if ("Protein Group" %in% colnames(dat) && "Top" %in% colnames(dat)) " Protein Group/Top columns detected for PEAKS Online protein-group reduction." else ""
+    return(paste0("PEAKS signature: ", length(qcols), " Area columns.", group_note))
+  }
+  NULL
+}
+
+input_format_registry <- function(input_family = c("dia", "dda")) {
+  input_family <- match.arg(input_family)
+  if (input_family == "dia") {
+    return(list(
+      list(id = "diann", label = "DIA-NN", detector = detect_diann_signature),
+      list(id = "spectronaut", label = "Spectronaut", detector = detect_spectronaut_signature)
+    ))
+  }
+  list(
+    list(id = "fragpipe", label = "FragPipe / MSFragger", detector = detect_fragpipe_signature),
+    list(id = "peaks", label = "PEAKS", detector = detect_peaks_signature),
+    list(id = "maxquant", label = "MaxQuant", detector = detect_maxquant_signature)
+  )
+}
+
+detect_input_format <- function(file, input_family = c("dia", "dda")) {
+  input_family <- match.arg(input_family)
+  raw <- read_result_file(file)
+  hits <- list()
+  for (entry in input_format_registry(input_family)) {
+    evidence <- entry$detector(raw)
+    if (!is.null(evidence)) {
+      hits[[length(hits) + 1]] <- list(id = entry$id, label = entry$label, evidence = evidence)
+    }
+  }
+  if (length(hits) == 0) {
+    return(list(id = NA_character_, label = "No supported format detected", evidence = "No registered parser signature matched the file header.", ambiguous = FALSE))
+  }
+  first <- hits[[1]]
+  first$ambiguous <- length(hits) > 1
+  first$all_hits <- vapply(hits, function(x) x$label, character(1))
+  first
 }
 
 standard_matrix_zero_modes <- c("zero_is_value", "zero_is_missing")
@@ -213,12 +339,30 @@ take_first <- function(x) {
   x
 }
 
+clean_accession_value <- function(x) {
+  x <- take_first(x)
+  x <- ifelse(grepl("^(sp|tr)\\|[^|]+\\|", x), sub("^(sp|tr)\\|([^|]+)\\|.*$", "\\2", x), sub("\\|.*$", "", x))
+  x
+}
+
+entry_name_from_accession_field <- function(x) {
+  x <- take_first(x)
+  out <- ifelse(grepl("^[^|]+\\|[^|]+$", x), sub("^[^|]+\\|([^|]+)$", "\\1", x), NA_character_)
+  out
+}
+
+entry_name_from_fasta_header <- function(x) {
+  x <- take_first(x)
+  out <- ifelse(grepl("^(sp|tr)\\|[^|]+\\|[^ ]+", x), sub("^(sp|tr)\\|[^|]+\\|([^ ]+).*$", "\\2", x), NA_character_)
+  out
+}
+
 take_numeric <- function(x) {
   x <- take_first(x)
   suppressWarnings(as.numeric(x))
 }
 
-clean_sample_name <- function(x, suffix = c("d", "raw", "spectronaut")) {
+clean_sample_name <- function(x, suffix = c("diann", "d", "raw", "spectronaut")) {
   suffix <- match.arg(suffix)
   x <- gsub("^\\[\\d+\\]\\s*", "", x)
   x <- gsub("\\\\", "/", x)
@@ -228,8 +372,7 @@ clean_sample_name <- function(x, suffix = c("d", "raw", "spectronaut")) {
     x <- gsub("\\.raw\\.PG\\.(Quantity|IBAQ)$", "", x, ignore.case = TRUE)
     x <- gsub("\\.PG\\.(Quantity|IBAQ)$", "", x, ignore.case = TRUE)
   }
-  x <- gsub("\\.d$", "", x, ignore.case = TRUE)
-  x <- gsub("\\.raw$", "", x, ignore.case = TRUE)
+  x <- gsub("\\.(d|raw|wiff)$", "", x, ignore.case = TRUE)
   x
 }
 
@@ -257,11 +400,14 @@ extract_protein_data <- function(file, software = c("DIANN", "Spectronaut"), dia
   gene_values <- take_first(raw[[ids[["gene_name"]]]])
 
   if (software == "DIANN") {
-    pattern <- if (diann_type == "raw") "\\.raw$" else "\\.d$"
-    qcols <- grep(pattern, colnames(raw), value = TRUE, ignore.case = TRUE)
-    if (length(qcols) == 0) stop("No DIA-NN sample columns ending with .", diann_type, " were found.")
+    qcols <- diann_quantity_columns(raw)
+    if (length(qcols) == 0) stop("No DIA-NN sample quantity columns were found.")
     qmat <- as.data.frame(lapply(raw[, qcols, drop = FALSE], take_numeric), check.names = FALSE)
-    colnames(qmat) <- clean_sample_name(colnames(qmat), suffix = diann_type)
+    if (all(grepl("\\.(d|raw|wiff)$", qcols, ignore.case = TRUE))) {
+      colnames(qmat) <- clean_sample_name(colnames(qmat), suffix = "diann")
+    } else {
+      colnames(qmat) <- make.unique(qcols)
+    }
     ident_mat <- qmat
     ibaq_mat <- NULL
   } else {
@@ -291,6 +437,424 @@ extract_protein_data <- function(file, software = c("DIANN", "Spectronaut"), dia
 
   counts <- data.frame(Sample = colnames(ident), Identified_Protein_Count = colSums(!is.na(ident)), stringsAsFactors = FALSE)
   list(raw = raw, meta = meta, quantity = as.matrix(quantity), qualitative = as.matrix(ident), ibaq = if (is.null(ibaq_mat)) NULL else as.matrix(ibaq_mat), counts = counts, software = software, samples = colnames(quantity))
+}
+
+clean_dda_sample_name <- function(x, software = c("fragpipe", "proteome_discoverer", "peaks", "maxquant")) {
+  software <- match.arg(software)
+  x <- trimws(as.character(x))
+  if (software == "maxquant") {
+    x <- sub("^LFQ intensity\\s+", "", x, ignore.case = TRUE)
+    x <- sub("^Intensity\\s+", "", x, ignore.case = TRUE)
+  } else if (software == "fragpipe") {
+    x <- sub("\\s+MaxLFQ Unique Intensity$", "", x, ignore.case = TRUE)
+    x <- sub("\\s+MaxLFQ Intensity$", "", x, ignore.case = TRUE)
+  } else if (software == "proteome_discoverer") {
+    x <- sub("^Abundance\\s*[:]?\\s*", "", x, ignore.case = TRUE)
+    x <- sub("^Ratio\\s*[:]?\\s*", "", x, ignore.case = TRUE)
+  } else if (software == "peaks") {
+    x <- sub("^Area\\s*[:]?\\s*", "", x, ignore.case = TRUE)
+    x <- sub("\\s+Area$", "", x, ignore.case = TRUE)
+    x[x == "Area"] <- paste0("Sample", seq_len(sum(x == "Area")))
+  }
+  x <- gsub("^F[0-9]+\\s*[:]\\s*", "", x)
+  x <- trimws(x)
+  x[x == ""] <- paste0("Sample", seq_len(sum(x == "")))
+  make.unique(x)
+}
+
+dda_id_candidates <- function(software = c("fragpipe", "proteome_discoverer", "peaks", "maxquant")) {
+  software <- match.arg(software)
+  if (software == "maxquant") {
+    return(list(
+      protein_name = c("Protein names", "Fasta headers", "Majority protein IDs", "Protein IDs"),
+      gene_name = c("Gene names", "Gene Names"),
+      accession = c("Majority protein IDs", "Protein IDs", "Accession")
+    ))
+  }
+  if (software == "fragpipe") {
+    return(list(
+      protein_name = c("Entry Name", "Protein", "Protein ID", "Description"),
+      gene_name = c("Gene", "Gene Name", "Mapped Genes"),
+      accession = c("Protein ID", "Protein", "Entry Name")
+    ))
+  }
+  if (software == "proteome_discoverer") {
+    return(list(
+      protein_name = c("Description", "Protein Description", "Accession"),
+      gene_name = c("Gene Symbol", "Gene", "Gene ID"),
+      accession = c("Accession", "Master Protein Accessions")
+    ))
+  }
+  list(
+    protein_name = c("Accession", "Description", "Protein ID"),
+    gene_name = c("Gene", "Gene Name"),
+    accession = c("Accession", "Protein ID", "Protein Group")
+  )
+}
+
+dda_quantity_columns <- function(raw, software = c("fragpipe", "proteome_discoverer", "peaks", "maxquant")) {
+  software <- match.arg(software)
+  if (software == "maxquant") return(grep_cols(raw, "^LFQ intensity "))
+  if (software == "fragpipe") return(grep_cols(raw, " MaxLFQ Intensity$"))
+  if (software == "proteome_discoverer") return(grep_cols(raw, "^Abundance"))
+  grep_cols(raw, "(^Area[: ]| Area$|^Area$)")
+}
+
+maxquant_filter_keep <- function(raw) {
+  keep <- rep(TRUE, nrow(raw))
+  for (col in c("Reverse", "Potential contaminant", "Only identified by site")) {
+    if (col %in% colnames(raw)) {
+      val <- trimws(as.character(raw[[col]]))
+      keep <- keep & !(val %in% c("+", "TRUE", "True", "true", "1"))
+    }
+  }
+  keep
+}
+
+fragpipe_spectral_count_columns <- function(raw) {
+  cols <- grep_cols(raw, " Spectral Count$")
+  cols[!grepl("(^Combined | Unique Spectral Count$| Total Spectral Count$)", cols, ignore.case = TRUE)]
+}
+
+extract_maxquant_protein_data <- function(file, row_id = c("protein_name", "gene_name", "accession")) {
+  row_id <- match.arg(row_id)
+  raw_all <- read_result_file(file)
+  qcols <- dda_quantity_columns(raw_all, "maxquant")
+  if (length(qcols) == 0) stop("No MaxQuant LFQ intensity sample columns were found.")
+
+  keep_filter <- maxquant_filter_keep(raw_all)
+  raw <- raw_all[keep_filter, , drop = FALSE]
+  qcols <- dda_quantity_columns(raw, "maxquant")
+
+  accession_col <- first_present_col(raw, c("Protein IDs", "Majority protein IDs"))
+  gene_col <- first_present_col(raw, c("Gene names", "Gene Names"))
+  fasta_col <- first_present_col(raw, c("Fasta headers", "Fasta Headers"))
+  description_col <- first_present_col(raw, c("Protein names", "Protein Names"))
+  if (is.na(accession_col)) stop("No MaxQuant Protein IDs or Majority protein IDs column was found.")
+  if (is.na(fasta_col)) stop("No MaxQuant Fasta headers column was found for UniProt entry-name extraction.")
+
+  accession_values <- clean_accession_value(raw[[accession_col]])
+  protein_values <- entry_name_from_fasta_header(raw[[fasta_col]])
+  fallback_protein <- if (!is.na(description_col)) take_first(raw[[description_col]]) else accession_values
+  protein_values[is.na(protein_values) | protein_values == ""] <- fallback_protein[is.na(protein_values) | protein_values == ""]
+  gene_values <- if (!is.na(gene_col)) take_first(raw[[gene_col]]) else rep(NA_character_, length(accession_values))
+  row_values <- switch(row_id, protein_name = protein_values, gene_name = gene_values, accession = accession_values)
+
+  qmat <- as.data.frame(lapply(raw[, qcols, drop = FALSE], take_numeric), check.names = FALSE)
+  qmat[qmat == 0] <- NA_real_
+  colnames(qmat) <- clean_dda_sample_name(qcols, "maxquant")
+
+  keep <- !is.na(row_values) & row_values != ""
+  if (!any(keep)) stop("No non-empty feature identifiers were found in the selected MaxQuant identifier field.")
+  meta <- data.frame(
+    RowID = row_values[keep],
+    ProteinName = protein_values[keep],
+    GeneName = gene_values[keep],
+    Accession = accession_values[keep],
+    SourceFormat = "maxquant",
+    IdentifierColumn = if (row_id == "accession") accession_col else if (row_id == "gene_name") gene_col else fasta_col,
+    ProteinIDs = if ("Protein IDs" %in% colnames(raw)) raw[["Protein IDs"]][keep] else NA,
+    MajorityProteinIDs = if ("Majority protein IDs" %in% colnames(raw)) raw[["Majority protein IDs"]][keep] else NA,
+    ProteinDescriptions = if (!is.na(description_col)) raw[[description_col]][keep] else NA,
+    FastaHeaders = raw[[fasta_col]][keep],
+    stringsAsFactors = FALSE
+  )
+  quantity <- qmat[keep, , drop = FALSE]
+  analysis_ids <- make.unique(meta$RowID)
+  meta$AnalysisID <- analysis_ids
+  rownames(quantity) <- analysis_ids
+  quantity <- as.matrix(quantity)
+  storage.mode(quantity) <- "numeric"
+  counts <- data.frame(Sample = colnames(quantity), Identified_Protein_Count = colSums(!is.na(quantity)), stringsAsFactors = FALSE)
+  list(
+    raw = raw,
+    raw_all = raw_all,
+    meta = meta,
+    quantity = quantity,
+    qualitative = quantity,
+    ibaq = NULL,
+    counts = counts,
+    software = "maxquant",
+    input_family = "dda",
+    input_source = "maxquant",
+    data_level = "protein",
+    format_evidence = "MaxQuant proteinGroups.txt: filtered reverse, contaminant, and only-identified-by-site rows; sample LFQ intensity columns are used for label-free quantification; zeros are treated as missing.",
+    features = rownames(quantity),
+    samples = colnames(quantity)
+  )
+}
+
+extract_fragpipe_protein_data <- function(file, row_id = c("protein_name", "gene_name", "accession")) {
+  row_id <- match.arg(row_id)
+  raw <- read_result_file(file)
+  qcols <- dda_quantity_columns(raw, "fragpipe")
+  if (length(qcols) == 0) stop("No FragPipe sample MaxLFQ Intensity columns were found.")
+  scols <- fragpipe_spectral_count_columns(raw)
+  if (length(scols) == 0) stop("No FragPipe sample Spectral Count columns were found for identification counts.")
+
+  ids <- dda_id_candidates("fragpipe")
+  selected_id_col <- first_present_col(raw, ids[[row_id]])
+  accession_col <- first_present_col(raw, ids[["accession"]])
+  protein_col <- first_present_col(raw, ids[["protein_name"]])
+  gene_col <- first_present_col(raw, ids[["gene_name"]])
+  if (is.na(selected_id_col)) stop("No suitable ", row_id, " identifier column was found for FragPipe/MSFragger.")
+
+  row_values <- if (row_id == "accession") clean_accession_value(raw[[selected_id_col]]) else take_first(raw[[selected_id_col]])
+  accession_values <- if (!is.na(accession_col)) clean_accession_value(raw[[accession_col]]) else row_values
+  protein_values <- if (!is.na(protein_col)) take_first(raw[[protein_col]]) else row_values
+  gene_values <- if (!is.na(gene_col)) take_first(raw[[gene_col]]) else rep(NA_character_, length(row_values))
+  if (!is.na(protein_col) && protein_col == "Entry Name") protein_values <- take_first(raw[[protein_col]])
+
+  qmat <- as.data.frame(lapply(raw[, qcols, drop = FALSE], take_numeric), check.names = FALSE)
+  qmat[qmat == 0] <- NA_real_
+  colnames(qmat) <- clean_dda_sample_name(qcols, "fragpipe")
+
+  ident_mat <- as.data.frame(lapply(raw[, scols, drop = FALSE], take_numeric), check.names = FALSE)
+  ident_mat[ident_mat == 0] <- NA_real_
+  colnames(ident_mat) <- clean_dda_sample_name(sub(" Spectral Count$", " MaxLFQ Intensity", scols), "fragpipe")
+  common_samples <- intersect(colnames(qmat), colnames(ident_mat))
+  if (length(common_samples) == 0) stop("FragPipe MaxLFQ Intensity columns and Spectral Count columns could not be matched by sample name.")
+  qmat <- qmat[, common_samples, drop = FALSE]
+  ident_mat <- ident_mat[, common_samples, drop = FALSE]
+
+  keep <- !is.na(row_values) & row_values != ""
+  if (!any(keep)) stop("No non-empty feature identifiers were found in the selected FragPipe identifier column: ", selected_id_col)
+  meta <- data.frame(
+    RowID = row_values[keep],
+    ProteinName = protein_values[keep],
+    GeneName = gene_values[keep],
+    Accession = accession_values[keep],
+    SourceFormat = "fragpipe",
+    IdentifierColumn = selected_id_col,
+    Protein = if ("Protein" %in% colnames(raw)) raw[["Protein"]][keep] else NA,
+    IndistinguishableProteins = if ("Indistinguishable Proteins" %in% colnames(raw)) raw[["Indistinguishable Proteins"]][keep] else NA,
+    stringsAsFactors = FALSE
+  )
+  quantity <- qmat[keep, , drop = FALSE]
+  ident <- ident_mat[keep, , drop = FALSE]
+  analysis_ids <- make.unique(meta$RowID)
+  meta$AnalysisID <- analysis_ids
+  rownames(quantity) <- analysis_ids
+  rownames(ident) <- analysis_ids
+  quantity <- as.matrix(quantity)
+  ident <- as.matrix(ident)
+  storage.mode(quantity) <- "numeric"
+  storage.mode(ident) <- "numeric"
+  counts <- data.frame(Sample = colnames(ident), Identified_Protein_Count = colSums(!is.na(ident)), stringsAsFactors = FALSE)
+  list(
+    raw = raw,
+    meta = meta,
+    quantity = quantity,
+    qualitative = ident,
+    ibaq = NULL,
+    counts = counts,
+    software = "fragpipe",
+    input_family = "dda",
+    input_source = "fragpipe",
+    data_level = "protein",
+    format_evidence = "FragPipe combined_protein.tsv: rows are protein groups; sample MaxLFQ Intensity columns are used for label-free quantification; zeros are treated as missing; sample Spectral Count > 0 defines identification.",
+    features = rownames(quantity),
+    samples = colnames(quantity)
+  )
+}
+
+peaks_coverage_columns <- function(raw) {
+  cols <- grep_cols(raw, "^Coverage\\(%\\)\\s+")
+  cols[nzchar(trimws(sub("^Coverage\\(%\\)\\s+", "", cols)))]
+}
+
+peaks_top_keep_index <- function(raw) {
+  if (!"Protein Group" %in% colnames(raw)) return(seq_len(nrow(raw)))
+  group <- as.character(raw[["Protein Group"]])
+  top <- if ("Top" %in% colnames(raw)) {
+    toupper(trimws(as.character(raw[["Top"]]))) %in% c("TRUE", "T", "YES", "Y", "1")
+  } else {
+    rep(FALSE, nrow(raw))
+  }
+  idx <- seq_len(nrow(raw))
+  groups_in_order <- unique(group)
+  unlist(lapply(groups_in_order, function(g) {
+    ii <- idx[group == g]
+    top_ii <- ii[top[ii]]
+    if (length(top_ii) > 0) top_ii[[1]] else ii[[1]]
+  }), use.names = FALSE)
+}
+
+extract_peaks_protein_data <- function(file, row_id = c("protein_name", "gene_name", "accession")) {
+  row_id <- match.arg(row_id)
+  raw_all <- read_result_file(file)
+  qcols <- dda_quantity_columns(raw_all, "peaks")
+  if (length(qcols) == 0) stop("No PEAKS Area columns were found.")
+  coverage_cols <- peaks_coverage_columns(raw_all)
+  if (length(coverage_cols) == 0) stop("No PEAKS sample-specific Coverage(%) columns were found. The unsuffixed Coverage(%) column is a global search summary and is not used as a sample identification field.")
+  keep_idx <- peaks_top_keep_index(raw_all)
+  raw <- raw_all[keep_idx, , drop = FALSE]
+
+  ids <- dda_id_candidates("peaks")
+  selected_id_col <- first_present_col(raw, ids[[row_id]])
+  accession_col <- first_present_col(raw, ids[["accession"]])
+  protein_col <- first_present_col(raw, ids[["protein_name"]])
+  gene_col <- first_present_col(raw, ids[["gene_name"]])
+  if (is.na(selected_id_col)) stop("No suitable ", row_id, " identifier column was found for PEAKS.")
+
+  row_values <- if (row_id == "accession") clean_accession_value(raw[[selected_id_col]]) else take_first(raw[[selected_id_col]])
+  accession_values <- if (!is.na(accession_col)) clean_accession_value(raw[[accession_col]]) else row_values
+  protein_values <- if (!is.na(protein_col) && protein_col == "Accession") entry_name_from_accession_field(raw[[protein_col]]) else if (!is.na(protein_col)) take_first(raw[[protein_col]]) else row_values
+  protein_values[is.na(protein_values) | protein_values == ""] <- row_values[is.na(protein_values) | protein_values == ""]
+  gene_values <- if (!is.na(gene_col)) take_first(raw[[gene_col]]) else rep(NA_character_, length(row_values))
+
+  qmat <- as.data.frame(lapply(raw[, qcols, drop = FALSE], take_numeric), check.names = FALSE)
+  qmat[qmat == 0] <- NA_real_
+  colnames(qmat) <- clean_dda_sample_name(qcols, "peaks")
+
+  coverage_mat <- as.data.frame(lapply(raw[, coverage_cols, drop = FALSE], take_numeric), check.names = FALSE)
+  coverage_mat[coverage_mat == 0] <- NA_real_
+  colnames(coverage_mat) <- clean_dda_sample_name(sub("^Coverage\\(%\\)\\s+", "Area ", coverage_cols), "peaks")
+  common_samples <- intersect(colnames(qmat), colnames(coverage_mat))
+  if (length(common_samples) == 0) stop("PEAKS Area sample columns and sample-specific Coverage(%) columns could not be matched by sample name.")
+  qmat <- qmat[, common_samples, drop = FALSE]
+  coverage_mat <- coverage_mat[, common_samples, drop = FALSE]
+
+  keep <- !is.na(row_values) & row_values != ""
+  if (!any(keep)) stop("No non-empty feature identifiers were found in the selected PEAKS identifier column: ", selected_id_col)
+  meta <- data.frame(
+    RowID = row_values[keep],
+    ProteinName = protein_values[keep],
+    GeneName = gene_values[keep],
+    Accession = accession_values[keep],
+    SourceFormat = "peaks",
+    IdentifierColumn = selected_id_col,
+    ProteinGroup = if ("Protein Group" %in% colnames(raw)) raw[["Protein Group"]][keep] else NA,
+    Top = if ("Top" %in% colnames(raw)) raw[["Top"]][keep] else NA,
+    OriginalRowIndex = keep_idx[keep],
+    stringsAsFactors = FALSE
+  )
+  quantity <- qmat[keep, , drop = FALSE]
+  ident <- coverage_mat[keep, , drop = FALSE]
+  analysis_ids <- make.unique(meta$RowID)
+  meta$AnalysisID <- analysis_ids
+  rownames(quantity) <- analysis_ids
+  rownames(ident) <- analysis_ids
+  quantity <- as.matrix(quantity)
+  ident <- as.matrix(ident)
+  storage.mode(quantity) <- "numeric"
+  storage.mode(ident) <- "numeric"
+  counts <- data.frame(Sample = colnames(ident), Identified_Protein_Count = colSums(!is.na(ident)), stringsAsFactors = FALSE)
+  list(
+    raw = raw,
+    raw_all = raw_all,
+    meta = meta,
+    quantity = quantity,
+    qualitative = ident,
+    ibaq = NULL,
+    counts = counts,
+    software = "peaks",
+    input_family = "dda",
+    input_source = "peaks",
+    data_level = "protein",
+    format_evidence = "PEAKS Online protein table: one row retained per Protein Group using Top == TRUE, first TRUE wins; Area zeros treated as missing; sample Coverage(%) nonzero values define identification.",
+    features = rownames(quantity),
+    samples = colnames(quantity)
+  )
+}
+
+extract_dda_protein_data <- function(file, software = c("fragpipe", "proteome_discoverer", "peaks", "maxquant"), row_id = c("protein_name", "gene_name", "accession")) {
+  load_required_packages()
+  software <- match.arg(software)
+  row_id <- match.arg(row_id)
+  if (software == "maxquant") return(extract_maxquant_protein_data(file, row_id))
+  if (software == "fragpipe") return(extract_fragpipe_protein_data(file, row_id))
+  if (software == "peaks") return(extract_peaks_protein_data(file, row_id))
+  raw <- read_result_file(file)
+  qcols <- dda_quantity_columns(raw, software)
+  if (length(qcols) == 0) stop("No supported DDA quantitative columns were found for ", software, ".")
+
+  ids <- dda_id_candidates(software)
+  selected_id_col <- first_present_col(raw, ids[[row_id]])
+  accession_col <- first_present_col(raw, ids[["accession"]])
+  protein_col <- first_present_col(raw, ids[["protein_name"]])
+  gene_col <- first_present_col(raw, ids[["gene_name"]])
+  if (is.na(selected_id_col)) {
+    stop("No suitable ", row_id, " identifier column was found for ", software, ".")
+  }
+
+  row_values <- take_first(raw[[selected_id_col]])
+  accession_values <- if (!is.na(accession_col)) take_first(raw[[accession_col]]) else row_values
+  protein_values <- if (!is.na(protein_col)) take_first(raw[[protein_col]]) else row_values
+  gene_values <- if (!is.na(gene_col)) take_first(raw[[gene_col]]) else rep(NA_character_, length(row_values))
+  qmat <- as.data.frame(lapply(raw[, qcols, drop = FALSE], take_numeric), check.names = FALSE)
+  colnames(qmat) <- clean_dda_sample_name(qcols, software)
+
+  keep <- !is.na(row_values) & row_values != ""
+  if (!any(keep)) stop("No non-empty feature identifiers were found in the selected DDA identifier column: ", selected_id_col)
+  meta <- data.frame(
+    RowID = row_values[keep],
+    ProteinName = protein_values[keep],
+    GeneName = gene_values[keep],
+    Accession = accession_values[keep],
+    SourceFormat = software,
+    IdentifierColumn = selected_id_col,
+    stringsAsFactors = FALSE
+  )
+  quantity <- qmat[keep, , drop = FALSE]
+  analysis_ids <- make.unique(meta$RowID)
+  meta$AnalysisID <- analysis_ids
+  rownames(quantity) <- analysis_ids
+  quantity <- as.matrix(quantity)
+  storage.mode(quantity) <- "numeric"
+  counts <- data.frame(Sample = colnames(quantity), Identified_Protein_Count = colSums(!is.na(quantity)), stringsAsFactors = FALSE)
+  list(
+    raw = raw,
+    meta = meta,
+    quantity = quantity,
+    qualitative = quantity,
+    ibaq = NULL,
+    counts = counts,
+    software = software,
+    input_family = "dda",
+    input_source = software,
+    data_level = "protein",
+    features = rownames(quantity),
+    samples = colnames(quantity)
+  )
+}
+
+load_input_dataset <- function(file, input_family = c("dia", "dda", "standard_matrix"), selected_format = "auto", diann_type = c("d", "raw"), row_id = c("protein_name", "gene_name", "accession"), standard_zero_mode = NULL) {
+  input_family <- match.arg(input_family)
+  row_id <- match.arg(row_id)
+  if (input_family == "standard_matrix") {
+    dat <- read_standard_matrix(file, standard_zero_mode)
+    dat$input_family <- "standard_matrix"
+    dat$format_label <- "Standard quantitative matrix"
+    dat$format_evidence <- "User selected standard quantitative matrix input."
+    return(dat)
+  }
+  if (identical(selected_format, "auto")) {
+    detected <- detect_input_format(file, input_family)
+    if (is.na(detected$id)) stop(detected$evidence)
+    selected_format <- detected$id
+  } else {
+    detected <- detect_input_format(file, input_family)
+  }
+  if (input_family == "dia") {
+    if (selected_format == "diann") {
+      dat <- extract_protein_data(file, "DIANN", diann_type, row_id)
+    } else if (selected_format == "spectronaut") {
+      dat <- extract_protein_data(file, "Spectronaut", diann_type, row_id)
+    } else {
+      stop("Unknown DIA format: ", selected_format)
+    }
+  } else {
+    dat <- extract_dda_protein_data(file, selected_format, row_id)
+  }
+  entry <- input_format_registry(input_family)
+  labels <- stats::setNames(vapply(entry, `[[`, character(1), "label"), vapply(entry, `[[`, character(1), "id"))
+  dat$input_family <- input_family
+  dat$input_source <- selected_format
+  dat$data_level <- dat$data_level %||% "protein"
+  dat$format_label <- labels[[selected_format]] %||% selected_format
+  dat$format_evidence <- detected$evidence %||% "Format selected manually."
+  dat
 }
 
 analysis_ids_to_accessions <- function(meta, ids) {
@@ -715,6 +1279,187 @@ write_ml_settings <- function(outdir, settings) {
   data.table::fwrite(data.frame(Setting = names(settings), Value = unname(unlist(settings)), stringsAsFactors = FALSE), file.path(outdir, paste0(analysis, "_ml_settings.csv")))
 }
 
+safe_div <- function(num, den) {
+  ifelse(is.na(den) | den == 0, NA_real_, num / den)
+}
+
+classification_eval_tables <- function(actual, predicted, probabilities = NULL, positive_class = NULL) {
+  actual <- droplevels(factor(actual))
+  predicted <- factor(predicted, levels = levels(actual))
+  cm <- table(Actual = actual, Predicted = predicted)
+  total <- sum(cm)
+  classes <- levels(actual)
+  per_class <- dplyr::bind_rows(lapply(classes, function(cls) {
+    tp <- cm[cls, cls]
+    fn <- sum(cm[cls, ]) - tp
+    fp <- sum(cm[, cls]) - tp
+    tn <- total - tp - fn - fp
+    data.frame(
+      Class = cls,
+      TP = as.integer(tp),
+      FP = as.integer(fp),
+      TN = as.integer(tn),
+      FN = as.integer(fn),
+      Sensitivity = safe_div(tp, tp + fn),
+      Specificity = safe_div(tn, tn + fp),
+      Precision = safe_div(tp, tp + fp),
+      F1 = safe_div(2 * tp, 2 * tp + fp + fn),
+      stringsAsFactors = FALSE
+    )
+  }))
+  accuracy <- safe_div(sum(diag(cm)), total)
+  auc_value <- NA_real_
+  roc_df <- NULL
+  if (!is.null(probabilities) && length(classes) == 2 && requireNamespace("pROC", quietly = TRUE)) {
+    probs <- as.data.frame(probabilities, check.names = FALSE)
+    pos <- positive_class %||% classes[[2]]
+    if (pos %in% colnames(probs)) {
+      roc_obj <- tryCatch(pROC::roc(response = actual, predictor = probs[[pos]], levels = classes, direction = "<", quiet = TRUE), error = function(e) NULL)
+      if (!is.null(roc_obj)) {
+        auc_value <- as.numeric(pROC::auc(roc_obj))
+        roc_df <- data.frame(
+          Specificity = rev(roc_obj$specificities),
+          Sensitivity = rev(roc_obj$sensitivities),
+          Threshold = rev(roc_obj$thresholds),
+          PositiveClass = pos,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+  summary <- data.frame(
+    Metric = c("Accuracy", "Macro sensitivity", "Macro specificity", "Macro F1", "AUC"),
+    Value = c(accuracy, mean(per_class$Sensitivity, na.rm = TRUE), mean(per_class$Specificity, na.rm = TRUE), mean(per_class$F1, na.rm = TRUE), auc_value),
+    stringsAsFactors = FALSE
+  )
+  list(confusion = as.data.frame.matrix(cm), per_class = per_class, summary = summary, roc = roc_df)
+}
+
+write_classification_evaluation <- function(actual, predicted, probabilities, outdir, prefix, positive_class = NULL) {
+  eval <- classification_eval_tables(actual, predicted, probabilities, positive_class)
+  confusion <- cbind(Actual = rownames(eval$confusion), eval$confusion)
+  data.table::fwrite(confusion, file.path(outdir, paste0(prefix, "_confusion_matrix.csv")))
+  data.table::fwrite(eval$per_class, file.path(outdir, paste0(prefix, "_class_metrics.csv")))
+  data.table::fwrite(eval$summary, file.path(outdir, paste0(prefix, "_summary_metrics.csv")))
+  if (!is.null(eval$roc)) data.table::fwrite(eval$roc, file.path(outdir, paste0(prefix, "_roc_curve.csv")))
+  invisible(eval)
+}
+
+make_cv_folds <- function(y, seed = 123, max_folds = 5) {
+  class_n <- table(y)
+  nfolds <- max(2, min(max_folds, min(class_n)))
+  make_stratified_foldid(y, nfolds, seed)
+}
+
+rf_predict_prob <- function(model, x) {
+  probs <- predict(model, x, type = "prob")
+  as.data.frame(probs, check.names = FALSE)
+}
+
+write_rf_evaluation <- function(x, y, training, rf_args, rf_model, outdir, seed = 123) {
+  if (length(training$test) > 0) {
+    test_x <- x[training$test, , drop = FALSE]
+    test_y <- droplevels(y[training$test])
+    probs <- rf_predict_prob(rf_model, test_x)
+    pred <- factor(colnames(probs)[max.col(probs, ties.method = "first")], levels = levels(test_y))
+    write_classification_evaluation(test_y, pred, probs, outdir, "random_forest_test")
+  }
+  foldid <- make_cv_folds(y, seed, max_folds = 5)
+  pred <- rep(NA_character_, length(y))
+  probs_all <- matrix(NA_real_, nrow = length(y), ncol = length(levels(y)), dimnames = list(names(y), levels(y)))
+  for (fold in sort(unique(foldid))) {
+    train_idx <- which(foldid != fold)
+    test_idx <- which(foldid == fold)
+    args <- rf_args
+    args$x <- x[train_idx, , drop = FALSE]
+    args$y <- droplevels(y[train_idx])
+    set.seed(seed + fold)
+    fit <- do.call(randomForest::randomForest, args)
+    probs <- rf_predict_prob(fit, x[test_idx, , drop = FALSE])
+    pred[test_idx] <- colnames(probs)[max.col(probs, ties.method = "first")]
+    probs_all[test_idx, colnames(probs)] <- as.matrix(probs)
+  }
+  write_classification_evaluation(y, factor(pred, levels = levels(y)), as.data.frame(probs_all, check.names = FALSE), outdir, "random_forest_cross_validation")
+  data.table::fwrite(data.frame(Sample = rownames(x), Fold = foldid, Actual = as.character(y), Predicted = pred, probs_all, check.names = FALSE), file.path(outdir, "random_forest_cross_validation_predictions.csv"))
+}
+
+write_l1_evaluation <- function(x, y, training, l1_alpha, lambda_selection, nfolds, outdir, seed = 123) {
+  if (length(training$test) > 0) {
+    x_train <- x[training$train, , drop = FALSE]
+    y_train <- droplevels(y[training$train])
+    foldid_train <- make_stratified_foldid(y_train, min(nfolds, min(table(y_train))), seed)
+    fit <- glmnet::cv.glmnet(x_train, y_train, family = "multinomial", alpha = l1_alpha, type.measure = "class", nfolds = max(foldid_train), foldid = foldid_train)
+    probs <- predict(fit, x[training$test, , drop = FALSE], s = lambda_selection, type = "response")
+    probs <- as.data.frame(probs[, , 1, drop = FALSE][, , 1], check.names = FALSE)
+    test_y <- droplevels(y[training$test])
+    pred <- factor(colnames(probs)[max.col(probs, ties.method = "first")], levels = levels(test_y))
+    write_classification_evaluation(test_y, pred, probs, outdir, "l1_test")
+  }
+  foldid <- make_cv_folds(y, seed, max_folds = min(5, nfolds))
+  pred <- rep(NA_character_, length(y))
+  probs_all <- matrix(NA_real_, nrow = length(y), ncol = length(levels(y)), dimnames = list(names(y), levels(y)))
+  for (fold in sort(unique(foldid))) {
+    train_idx <- which(foldid != fold)
+    test_idx <- which(foldid == fold)
+    y_train <- droplevels(y[train_idx])
+    inner_folds <- min(nfolds, min(table(y_train)))
+    inner_foldid <- make_stratified_foldid(y_train, inner_folds, seed + fold)
+    set.seed(seed + fold)
+    fit <- glmnet::cv.glmnet(x[train_idx, , drop = FALSE], y_train, family = "multinomial", alpha = l1_alpha, type.measure = "class", nfolds = inner_folds, foldid = inner_foldid)
+    probs <- predict(fit, x[test_idx, , drop = FALSE], s = lambda_selection, type = "response")
+    probs <- as.data.frame(probs[, , 1, drop = FALSE][, , 1], check.names = FALSE)
+    pred[test_idx] <- colnames(probs)[max.col(probs, ties.method = "first")]
+    probs_all[test_idx, colnames(probs)] <- as.matrix(probs)
+  }
+  write_classification_evaluation(y, factor(pred, levels = levels(y)), as.data.frame(probs_all, check.names = FALSE), outdir, "l1_cross_validation")
+  data.table::fwrite(data.frame(Sample = rownames(x), Fold = foldid, Actual = as.character(y), Predicted = pred, probs_all, check.names = FALSE), file.path(outdir, "l1_cross_validation_predictions.csv"))
+}
+
+write_rf_stability <- function(x, y, outdir, top_n = 50, rf_ntree = 500, mtry = NA_integer_, seed = 123, repeats = 20, sample_fraction = 0.8) {
+  selected <- list()
+  for (i in seq_len(repeats)) {
+    set.seed(seed + 1000 + i)
+    idx <- unlist(lapply(levels(y), function(cls) {
+      cls_idx <- which(y == cls)
+      sample(cls_idx, max(2, floor(length(cls_idx) * sample_fraction)), replace = FALSE)
+    }), use.names = FALSE)
+    args <- list(x = x[idx, , drop = FALSE], y = droplevels(y[idx]), ntree = rf_ntree, importance = TRUE)
+    if (!is.na(mtry)) args$mtry <- mtry
+    fit <- do.call(randomForest::randomForest, args)
+    imp <- randomForest::importance(fit)
+    col <- if ("MeanDecreaseGini" %in% colnames(imp)) "MeanDecreaseGini" else tail(colnames(imp), 1)
+    selected[[i]] <- rownames(imp)[order(imp[, col], decreasing = TRUE)][seq_len(min(top_n, nrow(imp)))]
+  }
+  freq <- sort(table(unlist(selected, use.names = FALSE)) / repeats, decreasing = TRUE)
+  out <- data.frame(ProteinID = names(freq), SelectionFrequency = as.numeric(freq), Repeats = repeats, stringsAsFactors = FALSE)
+  data.table::fwrite(out, file.path(outdir, "random_forest_stability_selection.csv"))
+  invisible(out)
+}
+
+write_l1_stability <- function(x, y, outdir, top_n = 50, l1_alpha = 1, lambda_selection = "lambda.1se", seed = 123, repeats = 20, sample_fraction = 0.8) {
+  selected <- list()
+  for (i in seq_len(repeats)) {
+    set.seed(seed + 2000 + i)
+    idx <- unlist(lapply(levels(y), function(cls) {
+      cls_idx <- which(y == cls)
+      sample(cls_idx, min(length(cls_idx), max(2, floor(length(cls_idx) * sample_fraction))), replace = FALSE)
+    }), use.names = FALSE)
+    y_sub <- droplevels(y[idx])
+    if (min(table(y_sub)) < 2) next
+    nfolds <- min(5, min(table(y_sub)))
+    foldid <- make_stratified_foldid(y_sub, nfolds, seed + i)
+    fit <- glmnet::cv.glmnet(x[idx, , drop = FALSE], y_sub, family = "multinomial", alpha = l1_alpha, type.measure = "class", nfolds = nfolds, foldid = foldid)
+    co <- coef(fit, s = lambda_selection)
+    ids <- unique(unlist(lapply(co, function(m) rownames(as.matrix(m))[as.numeric(as.matrix(m)[, 1]) != 0]), use.names = FALSE))
+    ids <- setdiff(ids, "(Intercept)")
+    selected[[i]] <- head(ids, top_n)
+  }
+  freq <- sort(table(unlist(selected, use.names = FALSE)) / repeats, decreasing = TRUE)
+  out <- data.frame(ProteinID = names(freq), SelectionFrequency = as.numeric(freq), Repeats = repeats, stringsAsFactors = FALSE)
+  data.table::fwrite(out, file.path(outdir, "l1_stability_selection.csv"))
+  invisible(out)
+}
+
 run_random_forest_selection <- function(mat, group_info, outdir, top_n = 50, rf_ntree = 500, seed = 123, split_mode = "auto", train_prop = 0.7, rf_mtry = NA, allow_small_sample = FALSE) {
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
   ml <- prepare_ml_input(mat, group_info)
@@ -728,11 +1473,13 @@ run_random_forest_selection <- function(mat, group_info, outdir, top_n = 50, rf_
   rf_args <- list(x = x[training$train, , drop = FALSE], y = droplevels(y[training$train]), ntree = rf_ntree, importance = TRUE)
   if (!is.na(mtry)) rf_args$mtry <- mtry
   rf <- do.call(randomForest::randomForest, rf_args)
+  write_rf_evaluation(x, y, training, rf_args, rf, outdir, seed)
   imp_mat <- randomForest::importance(rf)
   importance_col <- if ("MeanDecreaseGini" %in% colnames(imp_mat)) "MeanDecreaseGini" else tail(colnames(imp_mat), 1)
   imp <- data.frame(ProteinID = rownames(imp_mat), RFImportance = imp_mat[, importance_col], row.names = NULL) |>
     dplyr::arrange(dplyr::desc(RFImportance))
   data.table::fwrite(imp, file.path(outdir, "random_forest_importance.csv"))
+  write_rf_stability(x[training$train, , drop = FALSE], droplevels(y[training$train]), outdir, top_n = top_n, rf_ntree = rf_ntree, mtry = mtry, seed = seed, repeats = 20)
   write_ml_settings(outdir, list(
     Analysis = "Random forest",
     RandomSeed = seed,
@@ -744,6 +1491,7 @@ run_random_forest_selection <- function(mat, group_info, outdir, top_n = 50, rf_
     RandomForestNtree = rf_ntree,
     RandomForestMtry = if (is.na(mtry)) "Auto" else mtry,
     Importance = importance_col,
+    EvaluationOutputs = "confusion_matrix, class_metrics, summary_metrics, ROC/AUC for binary groups, stability_selection",
     SmallSampleExploratoryML = allow_small_sample,
     ReliabilityNote = if (allow_small_sample) "Exploratory only: no independent test set; feature selection may be unstable." else "",
     AutoNote = training$auto_note %||% ""
@@ -774,9 +1522,9 @@ resolve_l1_folds <- function(y_train, requested = "Auto", allow_small_sample = F
   } else {
     min(req, min_class_n)
   }
-  min_supported <- if (allow_small_sample) 2 else 3
+  min_supported <- if (allow_small_sample) 4 else 4
   if (nfolds < min_supported) {
-    stop("L1 feature selection cross-validation requires at least ", min_supported, " folds and sufficient samples per group in the training data. Current training group counts: ", format_class_counts(class_n), ".")
+    stop("L1 feature selection cross-validation requires at least ", min_supported, " folds and sufficient samples per group in the training data because glmnet requires nfolds > 3. Current training group counts: ", format_class_counts(class_n), ".")
   }
   fold_size <- floor(length(y_train) / nfolds)
   list(nfolds = nfolds, grouped = !allow_small_sample && fold_size >= 3)
@@ -788,7 +1536,7 @@ run_l1_selection <- function(mat, group_info, outdir, top_n = 50, l1_alpha = 1, 
   ml <- prepare_ml_input(mat, group_info)
   x <- ml$x
   y <- ml$y
-  class_n <- check_ml_sample_policy(y, "L1 feature selection", allow_small_sample, strict_min_per_class = 6, exploratory_min_per_class = 3)
+  class_n <- check_ml_sample_policy(y, "L1 feature selection", allow_small_sample, strict_min_per_class = 6, exploratory_min_per_class = 4)
   training <- resolve_ml_training(y, split_mode, train_prop, seed, min_train_per_class = 3, min_test_per_class = 1, label = "L1 feature selection", allow_small_sample = allow_small_sample, train_test_min_per_class = 8)
   x_train <- x[training$train, , drop = FALSE]
   y_train <- droplevels(y[training$train])
@@ -806,6 +1554,7 @@ run_l1_selection <- function(mat, group_info, outdir, top_n = 50, l1_alpha = 1, 
   } else {
     eval(cv_expr)
   }
+  write_l1_evaluation(x, y, training, l1_alpha, lambda_selection, nfolds, outdir, seed)
   co <- coef(cv, s = lambda_selection)
   coef_df <- dplyr::bind_rows(lapply(names(co), function(cls) {
     m <- as.matrix(co[[cls]])
@@ -818,6 +1567,7 @@ run_l1_selection <- function(mat, group_info, outdir, top_n = 50, l1_alpha = 1, 
     dplyr::summarise(L1Score = sum(abs(Coefficient)), NonzeroClasses = dplyr::n(), .groups = "drop") |>
     dplyr::arrange(dplyr::desc(L1Score))
   data.table::fwrite(scores, file.path(outdir, "l1_feature_scores.csv"))
+  write_l1_stability(x_train, y_train, outdir, top_n = top_n, l1_alpha = l1_alpha, lambda_selection = lambda_selection, seed = seed, repeats = 20)
   top <- head(scores$ProteinID, min(top_n, nrow(scores)))
   data.table::fwrite(data.frame(ProteinID = top), file.path(outdir, paste0("top", length(top), "_l1_features.csv")))
   if (length(top) > 0) write_matrix_csv(mat[top, , drop = FALSE], file.path(outdir, paste0("top", length(top), "_l1_feature_quantity_matrix.csv")))
@@ -834,6 +1584,7 @@ run_l1_selection <- function(mat, group_info, outdir, top_n = 50, l1_alpha = 1, 
     CrossValidationFolds = nfolds,
     RequestedCrossValidationFolds = cv_folds,
     GroupedCV = cv_settings$grouped,
+    EvaluationOutputs = "confusion_matrix, class_metrics, summary_metrics, ROC/AUC for binary groups, stability_selection",
     SmallSampleExploratoryML = allow_small_sample,
     GlmnetWarnings = if (length(glmnet_warnings) > 0) paste(unique(glmnet_warnings), collapse = " | ") else "",
     ReliabilityNote = if (allow_small_sample) "Exploratory only: no independent test set; feature selection may be unstable." else "",

@@ -1,4 +1,4 @@
-# ProteoDIAPostZ Formal Release V1.4
+# ProteoPostZ Formal V2.0
 # Developed by Wenjia Zhang
 
 options(shiny.maxRequestSize = 1024^3)
@@ -10,7 +10,7 @@ library(dplyr)
 source(file.path("R", "analysis_core.R"), encoding = "UTF-8")
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
-app_version <- "Formal V1.4"
+app_version <- "Formal V2.0"
 app_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 package_root <- normalizePath(file.path(app_root, ".."), winslash = "/", mustWork = FALSE)
 annotation_dir <- file.path(app_root, "annotations")
@@ -39,9 +39,10 @@ feature_source_choices <- c(
   "RF + L1 selected proteins" = "rfl1",
   "All available ML selected proteins / union" = "union"
 )
-input_source_choices <- c("DIA-NN" = "diann", "Spectronaut" = "spectronaut", "Standard quantitative matrix" = "standard_matrix")
+input_family_choices <- c("DIA result" = "dia", "DDA result" = "dda", "Standard quantitative matrix" = "standard_matrix")
+dia_format_choices <- c("Auto-detect DIA format" = "auto", "DIA-NN" = "diann", "Spectronaut" = "spectronaut")
+dda_format_choices <- c("Auto-detect DDA format" = "auto", "FragPipe / MSFragger" = "fragpipe", "PEAKS" = "peaks", "MaxQuant" = "maxquant")
 standard_zero_mode_choices <- c(
-  "Please select how zero should be interpreted" = "",
   "0 is a valid quantitative value" = "zero_is_value",
   "0 represents missing or unquantified" = "zero_is_missing"
 )
@@ -54,23 +55,49 @@ body, .form-control, .selectize-input, .btn, table { font-family: 'Microsoft YaH
 .sidebar-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
 .sidebar-fixed { flex: 0 0 auto; padding-top: 12px; border-top: 1px solid #d2d6da; background: transparent; }
 .sidebar-fixed .form-group { margin-bottom: 10px; }
-.brand { padding-top: 10px; margin-top: 12px; border-top: 1px solid #d2d6da; background: transparent; font-style: italic; color: #555; font-size: 13px; }
+.input-control-grid { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr); gap: 10px 14px; align-items: start; }
+.input-control-span-2 { grid-column: 1 / -1; }
+.input-control-grid > div { min-width: 0; }
+.input-control-grid .form-group { margin-bottom: 0; }
+.input-control-grid .form-control, .input-control-grid .selectize-control { max-width: 100%; }
+.brand { padding-top: 10px; margin-top: 12px; border-top: 1px solid #d2d6da; background: transparent; font-style: italic; color: #555; font-size: 13px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 18px; }
+.brand > div { min-width: 0; }
+.brand > div:first-child { grid-column: 1 / -1; }
 .brand .developer-name { font-family: 'Segoe Script', 'Brush Script MT', 'Lucida Handwriting', cursive; font-size: 16px; color: #3b4b54; }
-.brand .institution-cn, .brand .lab-line { font-family: 'Microsoft YaHei', Arial, sans-serif; font-style: normal; color: #263942; font-size: 13px; font-weight: 650; margin-top: 4px; }
+.brand .institution-cn, .brand .lab-line { font-family: 'Microsoft YaHei', Arial, sans-serif; font-style: normal; color: #263942; font-size: 13px; font-weight: 650; margin-top: 6px; }
 .brand .institution-en, .brand .lab-line-en { font-family: Arial, sans-serif; font-style: normal; color: #40515c; font-size: 12px; margin-top: 2px; }
+.brand .institution-cn { grid-column: 1; grid-row: 2; }
+.brand .institution-en { grid-column: 1; grid-row: 3; }
+.brand .lab-line { grid-column: 2; grid-row: 2; }
+.brand .lab-line-en { grid-column: 2; grid-row: 3; }
+.brand-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 18px; margin-top: 8px; }
+.brand-grid > div { min-width: 0; }
 .card { border-radius: 6px; box-shadow: 0 1px 8px rgba(20, 35, 50, 0.06); }
 .small-note { color: #666; font-size: 12px; line-height: 1.35; }
+.detect-note { color: #2f5f73; font-size: 12px; line-height: 1.35; margin: 4px 0 8px 0; white-space: pre-wrap; }
 .sample-warning { color: #B2182B; font-size: 13px; font-weight: 600; margin: 6px 0; }
 .input-error { color: #B2182B; font-size: 13px; font-weight: 600; white-space: pre-wrap; margin-top: 8px; }
 .zero-mode-detail { margin: 4px 0 8px 22px; color: #555; font-size: 12px; line-height: 1.35; }
 .analysis-card .card-header { font-weight: 650; }
-.input-main-stack { height: calc(100vh - 150px); min-height: 620px; display: flex; flex-direction: column; gap: 12px; }
+.input-main-stack { height: calc(100vh - 150px); min-height: 620px; min-width: 380px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
 .input-half-card { flex: 1 1 0; min-height: 0; }
 .input-half-card > .card-body { overflow: auto; }
 .control-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .preview-wrap { min-height: 280px; display: flex; align-items: center; justify-content: center; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 8px; }
 .preview-wrap img { max-width: 100%; height: auto; }
 .preview-nav { margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+@media (max-width: 980px) {
+  .input-control-grid { grid-template-columns: 1fr; }
+  .input-control-span-2 { grid-column: 1; }
+  .input-main-stack { min-width: 320px; }
+}
+@media (max-width: 1250px), (max-height: 760px) {
+  .input-control-grid { grid-template-columns: 1fr; }
+  .input-control-span-2 { grid-column: 1; }
+  .brand { grid-template-columns: 1fr; gap: 0; }
+  .brand > div:first-child, .brand .institution-cn, .brand .institution-en, .brand .lab-line, .brand .lab-line-en { grid-column: 1; grid-row: auto; }
+  .brand-grid { grid-template-columns: 1fr; gap: 4px; }
+}
 "
 
 size_inputs <- function(prefix, width_pt = default_plot_width_pt, height_pt = default_plot_height_pt) {
@@ -136,24 +163,39 @@ analysis_card <- function(id, title, controls) {
 quant_page <- function(...) layout_columns(col_widths = c(6, 6), ...)
 
 ui <- page_navbar(
-  title = paste("ProteoDIAPostZ", app_version),
+  title = paste("ProteoPostZ", app_version),
   theme = bs_theme(version = 5, primary = "#155F83", bootswatch = "flatly"),
   header = tags$head(tags$style(HTML(app_css))),
   nav_panel("Input",
     layout_sidebar(
-      sidebar = sidebar(width = 390,
+      sidebar = sidebar(width = "50%",
         div(class = "sidebar-scroll",
-          textInput("file_path", "Result file path (.csv/.tsv)", value = ""),
-        radioButtons("software", "Input type", choices = input_source_choices, selected = "diann", inline = FALSE),
-        conditionalPanel("input.software == 'diann'", radioButtons("diann_type", "DIA-NN sample suffix", choices = c("Bruker .d" = "d", "Thermo .raw" = "raw"), inline = TRUE)),
-        conditionalPanel("input.software != 'standard_matrix'", selectInput("row_id", "Matrix row name", choices = c("Protein name" = "protein_name", "Gene name" = "gene_name", "Accessions" = "accession"), selected = "protein_name")),
-        conditionalPanel("input.software == 'standard_matrix'",
-          div(class = "small-note", "Different software packages and processing workflows may use zero differently. Select the mode that matches the data source; the software will not infer this automatically."),
-          div(class = "small-note", "For physicochemical property analysis, standard matrix feature identifiers are matched to the annotation Accession column as-is. Use UniProt accessions in the first column if you want built-in annotation matching."),
-          radioButtons("standard_zero_mode", "0 values and missing values", choices = standard_zero_mode_choices, selected = ""),
-          div(class = "zero-mode-detail", strong("0 is a valid quantitative value"), br(), "Zero is retained as a valid quantitative value. Only explicit missing entries, such as blank cells, whitespace-only cells, NA, and NaN, are treated as missing values."),
-          div(class = "zero-mode-detail", strong("0 represents missing or unquantified"), br(), "Zero represents a missing or unquantified entry. Numeric zeros, blank cells, whitespace-only cells, NA, and NaN are all treated as missing values.")
-        ),
+          div(class = "input-control-grid",
+            div(class = "input-control-span-2", textInput("file_path", "Result file path (.csv/.tsv)", value = "")),
+            radioButtons("input_family", "Input category", choices = input_family_choices, selected = "dia", inline = FALSE),
+            conditionalPanel("input.input_family == 'dia'",
+              selectInput("dia_format", "Software format", choices = dia_format_choices, selected = "auto")
+            ),
+            conditionalPanel("input.input_family == 'dda'",
+              selectInput("dda_format", "Software format", choices = dda_format_choices, selected = "auto")
+            ),
+            div(class = "input-control-span-2",
+              conditionalPanel("input.input_family != 'standard_matrix'",
+                selectInput("row_id", "Feature identifier used as matrix row name", choices = c("Accessions" = "accession", "Protein name" = "protein_name", "Gene name" = "gene_name"), selected = "accession"),
+                div(class = "small-note", "Accessions are recommended for stable annotation mapping. Gene names may be missing for some accessions, especially when the search FASTA is not one-gene-one-protein."),
+                uiOutput("detected_format_message")
+              )
+            ),
+            div(class = "input-control-span-2",
+              conditionalPanel("input.input_family == 'standard_matrix'",
+                div(class = "small-note", "Different software packages and processing workflows may use zero differently. Select the mode that matches the data source; the software will not infer this automatically."),
+                div(class = "small-note", "For physicochemical property analysis, standard matrix feature identifiers are matched to the annotation Accession column as-is. Use UniProt accessions in the first column if you want built-in annotation matching."),
+                selectInput("standard_zero_mode", "0 values and missing values - Please select how zero should be interpreted", choices = c("Please select" = "", standard_zero_mode_choices), selected = ""),
+                div(class = "zero-mode-detail", strong("0 is a valid quantitative value"), br(), "Zero is retained as a valid quantitative value. Only explicit missing entries, such as blank cells, whitespace-only cells, NA, and NaN, are treated as missing values."),
+                div(class = "zero-mode-detail", strong("0 represents missing or unquantified"), br(), "Zero represents a missing or unquantified entry. Numeric zeros, blank cells, whitespace-only cells, NA, and NaN are all treated as missing values.")
+              )
+            )
+          )
         ),
         div(class = "sidebar-fixed",
           textInput("outdir", "Output directory", value = default_output),
@@ -195,6 +237,7 @@ ui <- page_navbar(
       analysis_card("cv", "Within-group CV ridgeline", tagList(numericInput("cv_max", "CV x-axis max (%)", 60, min = 1), size_inputs("cv"), palette_input("cv"), export_input("cv"), actionButton("run_cv", "Generate CV ridgeline", class = "btn-primary"))),
       analysis_card("pca", "PCA plot", tagList(numericInput("pca_min_valid", "Minimum valid fraction", 0.5, min = 0.1, max = 1, step = 0.05), size_inputs("pca"), palette_input("pca"), export_input("pca"), actionButton("run_pca", "Generate PCA", class = "btn-primary"))),
       analysis_card("umap", "UMAP plot", tagList(numericInput("umap_min_valid", "Minimum valid fraction", 0.5, min = 0.1, max = 1, step = 0.05), numericInput("umap_neighbors", "n_neighbors", 10, min = 2), numericInput("umap_min_dist", "min_dist", 0.1, min = 0, max = 1, step = 0.05), size_inputs("umap"), palette_input("umap"), export_input("umap"), actionButton("run_umap", "Generate UMAP", class = "btn-primary"))),
+      analysis_card("tsne", "t-SNE plot", tagList(numericInput("tsne_min_valid", "Minimum valid fraction", 0.5, min = 0.1, max = 1, step = 0.05), textInput("tsne_perplexity", "Perplexity", "Auto"), numericInput("tsne_max_iter", "Max iterations", 1000, min = 250, step = 250), size_inputs("tsne"), palette_input("tsne"), export_input("tsne"), actionButton("run_tsne", "Generate t-SNE", class = "btn-primary"))),
       analysis_card("volcano", "Volcano plot", tagList(uiOutput("volcano_groups"), selectInput("volcano_fc_method", "log2FC calculation", choices = c("Mean difference after log2(x+1)" = "log2_then_diff", "log2 of raw mean ratio" = "ratio_then_log2"), selected = "log2_then_diff"), selectInput("volcano_test_method", "Statistical test", choices = c("limma" = "limma", "t test" = "ttest"), selected = "limma"), selectInput("volcano_sig_metric", "P-value threshold type", choices = c("BH-adjusted p value" = "adj_p", "P value" = "raw_p"), selected = "adj_p"), numericInput("log2fc", "log2FC cutoff", 1, min = 0), numericInput("adj_p_cutoff", "BH-adjusted p value cutoff", 0.05, min = 0, max = 1), numericInput("raw_p_cutoff", "P value cutoff", 0.05, min = 0, max = 1), size_inputs("volcano"), export_input("volcano"), actionButton("run_volcano", "Generate volcano", class = "btn-primary")))
         )
       ),
@@ -222,7 +265,7 @@ ui <- page_navbar(
 
 server <- function(input, output, session) {
   rv <- reactiveValues(data = NULL, groups = NULL, preview = list(), preview_files = list(), preview_index = list(), status = list(), rf_features = NULL, load_error = NULL)
-  ids <- c("idbar","venn","upset","phys","cor","rank","cv","pca","umap","volcano","exprhm","rf","l1","rfl1","feature_umap","feature_hm","sling")
+  ids <- c("idbar","venn","upset","phys","cor","rank","cv","pca","umap","tsne","volcano","exprhm","rf","l1","rfl1","feature_umap","feature_hm","sling")
 
   observeEvent(input$exit_app, {
     showNotification("Exiting app and stopping the Shiny session...", type = "message", duration = 2)
@@ -268,7 +311,8 @@ server <- function(input, output, session) {
     })
   }
 
-  is_standard_matrix_data <- function(dat = rv$data) identical(dat$input_source %||% dat$software %||% "", "standard_matrix")
+  is_standard_matrix_data <- function(dat = rv$data) identical(dat$input_family %||% dat$input_source %||% dat$software %||% "", "standard_matrix")
+  is_dda_data <- function(dat = rv$data) identical(dat$input_family %||% "", "dda")
   clear_loaded_input <- function() {
     old_pngs <- unlist(rv$preview_files, use.names = FALSE)
     if (length(old_pngs) > 0) unlink(old_pngs[file.exists(old_pngs)], force = TRUE)
@@ -281,14 +325,31 @@ server <- function(input, output, session) {
     rv$status <- list()
     rv$load_error <- NULL
   }
-  observeEvent(input$software, {
+  observeEvent(input$input_family, {
     clear_loaded_input()
-    if (!identical(input$software, "standard_matrix")) updateRadioButtons(session, "standard_zero_mode", selected = "")
+    if (!identical(input$input_family, "standard_matrix")) updateSelectInput(session, "standard_zero_mode", selected = "")
   }, ignoreInit = TRUE)
+  observeEvent(input$dia_format, { if (!is.null(rv$data)) clear_loaded_input() }, ignoreInit = TRUE)
+  observeEvent(input$dda_format, { if (!is.null(rv$data)) clear_loaded_input() }, ignoreInit = TRUE)
   observeEvent(input$file_path, { clear_loaded_input() }, ignoreInit = TRUE)
   observeEvent(input$standard_zero_mode, {
     if (is_standard_matrix_data()) clear_loaded_input()
   }, ignoreInit = TRUE)
+  output$detected_format_message <- renderUI({
+    path <- trimws(input$file_path %||% "")
+    family <- input$input_family %||% "dia"
+    if (!nzchar(path) || identical(family, "standard_matrix")) return(NULL)
+    if (!file.exists(path)) return(div(class = "detect-note", "Format detection: waiting for an existing file path."))
+    selected <- if (family == "dia") input$dia_format %||% "auto" else input$dda_format %||% "auto"
+    detected <- tryCatch(
+      detect_input_format(path, family),
+      error = function(e) list(id = NA_character_, label = "Detection failed", evidence = conditionMessage(e), ambiguous = FALSE)
+    )
+    selected_note <- if (identical(selected, "auto")) "Loader will use the detected format." else paste0("Manual override selected: ", selected, ".")
+    msg <- paste0("Detected format: ", detected$label, "\n", detected$evidence, "\n", selected_note)
+    if (isTRUE(detected$ambiguous)) msg <- paste0(msg, "\nMultiple signatures matched: ", paste(detected$all_hits, collapse = ", "), ". The first registered match is shown.")
+    div(class = "detect-note", msg)
+  })
   standard_input_summary_df <- function(dat) {
     total_cells <- length(dat$analysis_quant_matrix)
     total_missing <- sum(dat$missingness_matrix)
@@ -328,6 +389,20 @@ server <- function(input, output, session) {
   standard_mode_note <- function() {
     if (is_standard_matrix_data()) paste0("Zero handling mode: ", rv$data$missingness_mode, " - ", rv$data$missingness_mode_label) else NULL
   }
+  input_format_summary_df <- function(dat) {
+    data.frame(
+      Metric = c("Input category", "Detected/selected format", "Data level", "Feature count", "Sample count", "Format evidence"),
+      Value = c(
+        dat$input_family %||% dat$input_source %||% dat$software %||% "unknown",
+        dat$format_label %||% dat$input_source %||% dat$software %||% "unknown",
+        dat$data_level %||% "protein",
+        nrow(dat$quantity),
+        ncol(dat$quantity),
+        dat$format_evidence %||% "Manual input format."
+      ),
+      stringsAsFactors = FALSE
+    )
+  }
   outdir <- reactive({ normalizePath(input$outdir, winslash = "/", mustWork = FALSE) })
   observe({ dir.create(outdir(), recursive = TRUE, showWarnings = FALSE) })
   pts <- function(prefix) c(input[[paste0(prefix, "_w_pt")]] / 72, input[[paste0(prefix, "_h_pt")]] / 72)
@@ -347,6 +422,7 @@ server <- function(input, output, session) {
   observeEvent(input$reset_cv, { updateNumericInput(session, "cv_max", value = 60); reset_common("cv") })
   observeEvent(input$reset_pca, { updateNumericInput(session, "pca_min_valid", value = 0.5); reset_common("pca") })
   observeEvent(input$reset_umap, { updateNumericInput(session, "umap_min_valid", value = 0.5); updateNumericInput(session, "umap_neighbors", value = 10); updateNumericInput(session, "umap_min_dist", value = 0.1); reset_common("umap") })
+  observeEvent(input$reset_tsne, { updateNumericInput(session, "tsne_min_valid", value = 0.5); updateTextInput(session, "tsne_perplexity", value = "Auto"); updateNumericInput(session, "tsne_max_iter", value = 1000); reset_common("tsne") })
   observeEvent(input$reset_volcano, { updateSelectInput(session, "volcano_fc_method", selected = "log2_then_diff"); updateSelectInput(session, "volcano_test_method", selected = "limma"); updateSelectInput(session, "volcano_sig_metric", selected = "adj_p"); updateNumericInput(session, "log2fc", value = 1); updateNumericInput(session, "adj_p_cutoff", value = 0.05); updateNumericInput(session, "raw_p_cutoff", value = 0.05); reset_common("volcano", palette = FALSE) })
   observeEvent(input$reset_exprhm, { updateNumericInput(session, "hm_top", value = 100); updateSelectInput(session, "hm_row_cluster", selected = "hclust"); updateSelectInput(session, "hm_col_cluster", selected = "hclust"); updateNumericInput(session, "hm_k", value = 4); reset_common("exprhm", palette = FALSE, width_pt = default_expr_heatmap_width_pt, height_pt = default_expr_heatmap_height_pt) })
   observeEvent(input$reset_rf, { updateNumericInput(session, "rf_seed", value = 123); updateSelectInput(session, "rf_split_mode", selected = "auto"); updateNumericInput(session, "rf_train_prop", value = 0.7); updateCheckboxInput(session, "rf_small_sample", value = FALSE); updateNumericInput(session, "rf_top", value = 30); updateNumericInput(session, "rf_ntree", value = 500); updateTextInput(session, "rf_mtry", value = "Auto"); reset_common("rf") })
@@ -373,6 +449,67 @@ server <- function(input, output, session) {
     }
     if (ok) png else NA_character_
   }
+  json_escape <- function(x) {
+    x <- as.character(x %||% "")
+    x <- gsub("\\\\", "\\\\\\\\", x)
+    x <- gsub('"', '\\"', x)
+    x <- gsub("\n", "\\\\n", x, fixed = TRUE)
+    x
+  }
+  analysis_parameters <- function(id) {
+    switch(id,
+      pca = list(min_valid_fraction = input$pca_min_valid),
+      umap = list(min_valid_fraction = input$umap_min_valid, n_neighbors = input$umap_neighbors, min_dist = input$umap_min_dist),
+      tsne = list(min_valid_fraction = input$tsne_min_valid, perplexity = input$tsne_perplexity, max_iter = input$tsne_max_iter),
+      rf = list(seed = input$rf_seed, split_mode = input$rf_split_mode, train_prop = input$rf_train_prop, small_sample = isTRUE(input$rf_small_sample), top_n = input$rf_top, ntree = input$rf_ntree, mtry = input$rf_mtry),
+      l1 = list(seed = input$l1_seed, split_mode = input$l1_split_mode, train_prop = input$l1_train_prop, small_sample = isTRUE(input$l1_small_sample), alpha = input$l1_alpha, lambda = input$l1_lambda, cv_folds = input$l1_folds, top_n = input$l1_top),
+      rfl1 = list(seed = input$rfl1_seed, split_mode = input$rfl1_split_mode, train_prop = input$rfl1_train_prop, small_sample = isTRUE(input$rfl1_small_sample), top_n = input$rfl1_top, ntree = input$rfl1_ntree, mtry = input$rfl1_mtry, alpha = input$rfl1_alpha, lambda = input$rfl1_lambda, cv_folds = input$rfl1_folds),
+      volcano = list(reference_group = input$volcano_a, comparison_group = input$volcano_b, fc_method = input$volcano_fc_method, test_method = input$volcano_test_method, significance_metric = input$volcano_sig_metric, log2fc_cutoff = input$log2fc, adjusted_p_cutoff = input$adj_p_cutoff, raw_p_cutoff = input$raw_p_cutoff),
+      cor = list(method = input$cor_method, sample_order = input$cor_order, cluster_within_group = input$cor_cluster),
+      list()
+    )
+  }
+  write_analysis_manifest <- function(id, pdfs, csvs, note = NULL) {
+    if (!requireNamespace("jsonlite", quietly = TRUE) || is.null(rv$data)) return(invisible(NULL))
+    dat <- data_for_analysis()
+    files <- unique(normalizePath(c(pdfs[file.exists(pdfs)], csvs[file.exists(csvs)]), winslash = "/", mustWork = FALSE))
+    manifest <- list(
+      app = list(name = "ProteoPostZ", version = app_version, generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %z")),
+      input = list(
+        file = normalizePath(input$file_path, winslash = "/", mustWork = FALSE),
+        category = dat$input_family %||% dat$input_source %||% dat$software %||% "",
+        format = dat$format_label %||% dat$input_source %||% dat$software %||% "",
+        detection_evidence = dat$format_evidence %||% "",
+        data_level = dat$data_level %||% "protein",
+        features = nrow(dat$quantity),
+        samples = ncol(dat$quantity),
+        zero_handling = if (is_standard_matrix_data(dat)) paste0(dat$missingness_mode, " - ", dat$missingness_mode_label) else "not applicable"
+      ),
+      grouping = sample_metadata(),
+      analysis = list(id = id, parameters = analysis_parameters(id), note = note %||% ""),
+      preprocessing = list(default_matrix_preprocessing = "Most quantitative plots and ML use log2(x + 1), valid-feature filtering, and median imputation inside preprocess_expr where applicable."),
+      outputs = files
+    )
+    json_path <- file.path(outdir(), "analysis_manifest.json")
+    jsonlite::write_json(manifest, json_path, pretty = TRUE, auto_unbox = TRUE, na = "null")
+    html_path <- file.path(outdir(), "analysis_summary.html")
+    rows <- paste0("<li>", json_escape(files), "</li>", collapse = "\n")
+    html <- paste0(
+      "<!doctype html><html><head><meta charset=\"utf-8\"><title>ProteoPostZ Analysis Summary</title>",
+      "<style>body{font-family:Arial,'Microsoft YaHei',sans-serif;margin:24px;line-height:1.45;color:#263942}code{background:#f4f6f7;padding:2px 4px;border-radius:3px}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:5px 8px}</style></head><body>",
+      "<h1>ProteoPostZ Analysis Summary</h1>",
+      "<p><strong>Version:</strong> ", json_escape(app_version), "</p>",
+      "<p><strong>Input:</strong> <code>", json_escape(manifest$input$file), "</code></p>",
+      "<p><strong>Format:</strong> ", json_escape(manifest$input$category), " / ", json_escape(manifest$input$format), "</p>",
+      "<p><strong>Detection evidence:</strong> ", json_escape(manifest$input$detection_evidence), "</p>",
+      "<p><strong>Latest analysis:</strong> ", json_escape(id), "</p>",
+      "<p><strong>Manifest:</strong> <code>", json_escape(json_path), "</code></p>",
+      "<h2>Output files</h2><ul>", rows, "</ul>",
+      "</body></html>"
+    )
+    writeLines(html, html_path, useBytes = TRUE)
+    invisible(list(json = json_path, html = html_path))
+  }
   finish <- function(id, pdfs, csvs = character(), export_csv = TRUE, note = NULL) {
     if (!export_csv && length(csvs) > 0) unlink(csvs[file.exists(csvs)], force = TRUE)
     valid_pdfs <- pdfs[file.exists(pdfs)]
@@ -390,7 +527,9 @@ server <- function(input, output, session) {
     csv_msg <- if (export_csv && any(file.exists(csvs))) paste("CSV:", paste(normalizePath(csvs[file.exists(csvs)], winslash = "/"), collapse = "\n     ")) else "CSV: not generated"
     pdf_msg <- paste("PDF:", paste(normalizePath(pdfs[file.exists(pdfs)], winslash = "/"), collapse = "\n     "))
     if (!is.null(rv$data)) try(data.table::fwrite(sample_metadata(), file.path(outdir(), "sample_metadata.csv")), silent = TRUE)
-    rv$status[[id]] <- paste(c(note, pdf_msg, csv_msg), collapse = "\n")
+    manifest_paths <- tryCatch(write_analysis_manifest(id, pdfs, if (export_csv) csvs else character(), note), error = function(e) NULL)
+    manifest_msg <- if (!is.null(manifest_paths)) paste("Summary:", normalizePath(manifest_paths$html, winslash = "/", mustWork = FALSE), "\nManifest:", normalizePath(manifest_paths$json, winslash = "/", mustWork = FALSE)) else NULL
+    rv$status[[id]] <- paste(c(note, pdf_msg, csv_msg, manifest_msg), collapse = "\n")
   }
 
   fail_analysis <- function(id, label, err) {
@@ -468,19 +607,17 @@ server <- function(input, output, session) {
     clear_loaded_input()
     withProgress(message = "Loading data", value = 0.2, {
       tryCatch({
-        source_type <- input$software %||% "diann"
+        source_type <- input$input_family %||% "dia"
         if (source_type == "standard_matrix") {
           mode <- input$standard_zero_mode %||% ""
           if (!nzchar(mode)) stop("Please select how zero should be interpreted before loading a standard quantitative matrix.")
-          dat <- read_standard_matrix(input$file_path, mode)
-        } else if (source_type == "diann") {
-          dat <- extract_protein_data(input$file_path, "DIANN", input$diann_type %||% "d", input$row_id)
-          dat$input_source <- "diann"
-        } else if (source_type == "spectronaut") {
-          dat <- extract_protein_data(input$file_path, "Spectronaut", input$diann_type %||% "d", input$row_id)
-          dat$input_source <- "spectronaut"
+          dat <- load_input_dataset(input$file_path, "standard_matrix", "standard_matrix", "d", input$row_id, mode)
+        } else if (source_type == "dia") {
+          dat <- load_input_dataset(input$file_path, "dia", input$dia_format %||% "auto", "d", input$row_id)
+        } else if (source_type == "dda") {
+          dat <- load_input_dataset(input$file_path, "dda", input$dda_format %||% "auto", "d", input$row_id)
         } else {
-          stop("Unknown input type: ", source_type)
+          stop("Unknown input category: ", source_type)
         }
         rv$data <- dat
         rv$groups <- rep("1", length(dat$samples)); names(rv$groups) <- dat$samples
@@ -528,14 +665,14 @@ server <- function(input, output, session) {
     sample_name_problem()
   })
   output$input_error <- renderText({ rv$load_error %||% "" })
-  output$input_overview_title <- renderUI({ if (is_standard_matrix_data()) "Available quantitative values overview" else "Detected protein groups" })
+  output$input_overview_title <- renderUI({ if (is_standard_matrix_data()) "Available quantitative values overview" else if (is_dda_data()) "DDA protein-level quantitative entries" else "Detected protein groups" })
   output$n_proteins <- renderText({ req(rv$data); paste0(nrow(rv$data$quantity), if (is_standard_matrix_data()) " features" else " proteins") })
   output$n_samples <- renderText({ req(rv$data); paste0(ncol(rv$data$quantity), " samples") })
   output$n_groups <- renderText({ req(rv$data); paste0(length(unique(group_info()$Group)), " groups") })
   output$input_summary <- renderDT({
     req(rv$data)
-    if (!is_standard_matrix_data()) return(datatable(data.frame(Metric = character(), Value = character()), options = list(dom = "t")))
-    datatable(standard_input_summary_df(rv$data), rownames = FALSE, options = list(dom = "t", pageLength = 12))
+    df <- if (is_standard_matrix_data()) standard_input_summary_df(rv$data) else input_format_summary_df(rv$data)
+    datatable(df, rownames = FALSE, options = list(dom = "t", pageLength = 12))
   })
   output$counts_table <- renderDT({
     req(rv$data)
@@ -594,6 +731,7 @@ server <- function(input, output, session) {
   pca_data <- function(min_valid) { used <- preprocess_expr(data_for_analysis()$quantity, TRUE, min_valid); sample_mat <- t(used); pca <- prcomp(sample_mat, center = TRUE, scale. = TRUE); var <- summary(pca)$importance[2, 1:2] * 100; df <- data.frame(Sample = rownames(pca$x), PC1 = pca$x[,1], PC2 = pca$x[,2]) |> left_join(group_info(), by = "Sample"); list(df = df, var = var) }
   observeEvent(input$run_pca, { run_analysis("pca", "PCA plot", { req(rv$data); d <- analysis_dir("pca"); wh <- pts("pca"); res <- pca_data(input$pca_min_valid); pdf <- file.path(d, "PCA_plot.pdf"); csv <- file.path(d, "PCA_coordinates.csv"); if (input$pca_export_csv) data.table::fwrite(res$df, csv); p <- ggplot2::ggplot(res$df, ggplot2::aes(PC1, PC2, color = Group)) + ggplot2::geom_point(size = 2.4) + ggplot2::scale_color_manual(values = sci_palette(length(levels(group_info()$Group)), input$pca_palette)) + theme_sci() + ggplot2::labs(x = sprintf("PC1 (%.2f%%)", res$var[1]), y = sprintf("PC2 (%.2f%%)", res$var[2])); ggplot2::ggsave(pdf, p, width = wh[1], height = wh[2]); finish("pca", pdf, csv, input$pca_export_csv, standard_mode_note()) }) })
   observeEvent(input$run_umap, { run_analysis("umap", "UMAP plot", { req(rv$data); d <- analysis_dir("umap"); wh <- pts("umap"); used <- preprocess_expr(data_for_analysis()$quantity, TRUE, input$umap_min_valid); sample_mat <- t(used); set.seed(123); nn <- min(input$umap_neighbors, max(2, nrow(sample_mat) - 1)); um <- uwot::umap(sample_mat, n_neighbors = nn, min_dist = input$umap_min_dist, metric = "euclidean", verbose = FALSE); df <- data.frame(Sample = rownames(sample_mat), UMAP1 = um[,1], UMAP2 = um[,2]) |> left_join(group_info(), by = "Sample"); pdf <- file.path(d, "UMAP_plot.pdf"); csv <- file.path(d, "UMAP_coordinates.csv"); if (input$umap_export_csv) data.table::fwrite(df, csv); p <- ggplot2::ggplot(df, ggplot2::aes(UMAP1, UMAP2, color = Group)) + ggplot2::geom_point(size = 2.4) + ggplot2::scale_color_manual(values = sci_palette(length(levels(group_info()$Group)), input$umap_palette)) + theme_sci(); ggplot2::ggsave(pdf, p, width = wh[1], height = wh[2]); finish("umap", pdf, csv, input$umap_export_csv, standard_mode_note()) }) })
+  observeEvent(input$run_tsne, { run_analysis("tsne", "t-SNE plot", { req(rv$data); if (!requireNamespace("Rtsne", quietly = TRUE)) stop("t-SNE requires the Rtsne package, which is not available in the current runtime."); d <- analysis_dir("tsne"); wh <- pts("tsne"); used <- preprocess_expr(data_for_analysis()$quantity, TRUE, input$tsne_min_valid); sample_mat <- t(used); if (nrow(sample_mat) < 4) stop("t-SNE requires at least four samples after filtering."); max_perplexity <- max(1, floor((nrow(sample_mat) - 1) / 3)); requested <- parse_auto_integer(input$tsne_perplexity, NA_integer_); perplexity <- if (is.na(requested)) min(30, max_perplexity) else min(requested, max_perplexity); if (perplexity < 1) stop("t-SNE perplexity must be at least 1 and less than one-third of the sample count."); set.seed(123); ts <- Rtsne::Rtsne(sample_mat, dims = 2, perplexity = perplexity, max_iter = input$tsne_max_iter, check_duplicates = FALSE, pca = TRUE, verbose = FALSE); df <- data.frame(Sample = rownames(sample_mat), tSNE1 = ts$Y[,1], tSNE2 = ts$Y[,2], Perplexity = perplexity, MaxIter = input$tsne_max_iter) |> left_join(group_info(), by = "Sample"); pdf <- file.path(d, "tSNE_plot.pdf"); csv <- file.path(d, "tSNE_coordinates.csv"); if (input$tsne_export_csv) data.table::fwrite(df, csv); p <- ggplot2::ggplot(df, ggplot2::aes(tSNE1, tSNE2, color = Group)) + ggplot2::geom_point(size = 2.4) + ggplot2::scale_color_manual(values = sci_palette(length(levels(group_info()$Group)), input$tsne_palette)) + theme_sci() + ggplot2::labs(x = "t-SNE 1", y = "t-SNE 2"); ggplot2::ggsave(pdf, p, width = wh[1], height = wh[2]); finish("tsne", pdf, csv, input$tsne_export_csv, standard_mode_note()) }) })
 
   observeEvent(input$run_volcano, { run_analysis("volcano", "Volcano plot", { req(rv$data); d <- analysis_dir("volcano"); wh <- pts("volcano"); pdf <- file.path(d, paste0("volcano_", input$volcano_b, "_vs_", input$volcano_a, ".pdf")); csv <- file.path(d, paste0("volcano_", input$volcano_b, "_vs_", input$volcano_a, ".csv")); run_volcano(data_for_analysis()$quantity, group_info(), input$volcano_a, input$volcano_b, pdf, csv, input$log2fc, input$adj_p_cutoff, input$raw_p_cutoff, input$volcano_fc_method, input$volcano_test_method, input$volcano_sig_metric, wh[1], wh[2]); finish("volcano", pdf, csv, input$volcano_export_csv, standard_mode_note()) }) })
   observeEvent(input$run_exprhm, { run_analysis("exprhm", "Expression heatmap", { req(rv$data); d <- analysis_dir("exprhm"); wh <- pts("exprhm"); pdf <- file.path(d, "expression_heatmap.pdf"); csv <- file.path(d, "expression_heatmap_values.csv"); plot_expression_heatmap(data_for_analysis()$quantity, group_info(), pdf, csv, input$hm_top, input$hm_row_cluster, input$hm_col_cluster, input$hm_k, max(wh[1], 3), max(wh[2], 3)); finish("exprhm", pdf, list.files(d, pattern = "\\.csv$", full.names = TRUE), input$exprhm_export_csv, standard_mode_note()) }) })

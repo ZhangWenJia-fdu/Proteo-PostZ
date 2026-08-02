@@ -1,102 +1,85 @@
-# ProteoDIAPostZ
+# ProteoPostZ
 
-ProteoDIAPostZ is a Windows/R/Shiny desktop-style application for post-processing protein-level DIA proteomics results from DIA-NN, Spectronaut, and preprocessed standard quantitative matrices.
+ProteoPostZ, formerly named ProteoDIAPostZ, is a Windows/R/Shiny desktop-style application for post-processing protein-level DIA and DDA proteomics results and user-prepared standard quantitative matrices.
 
-Current source version: **Formal V1.4**
+Current source version: **ProteoPostZ Formal V2.0**.
 
-Developed by Wenjia Zhang, Department of Chemistry, Fudan University, Modern Chromatography Separation and Analysis.
+## Why The Name Changed
 
-## Source Repository Boundary
+ProteoDIAPostZ V1.4 focused on DIA protein-level post-processing. V2.0 expands the input scope to DIA, DDA, and standard quantitative matrices, so the product name is shortened to **ProteoPostZ** while preserving the original version lineage.
 
-This repository contains the application source code, tests, documentation, launcher source, and lightweight startup scripts.
+## Supported Inputs
 
-The source repository intentionally does **not** include:
+ProteoPostZ V2.0 uses a separated input recognition layer and converts all accepted formats into a shared internal protein quantitative matrix. The recommended and default row identifier is **accession**, because physicochemical mapping and annotation are accession-based and some FASTA/database choices do not provide a unique gene name for every accession.
 
-- portable R runtime folders such as `portable/R-4.5.1/`;
-- packaged R library folders such as `portable/Rlibs/`;
-- generated analysis outputs under `outputs/`;
-- runtime logs under `logs/`;
-- built zip archives or installer/package artifacts;
-- compiled launcher executables.
+DIA protein-level inputs:
 
-The complete portable Windows software package is distributed separately as a **GitHub Release asset**. Users who only want to run the software should download the release asset rather than cloning this source repository.
+- DIA-NN `pg_matrix` tables, including sample columns from `.d`, `.raw`, `.wiff`, and direct sample-name columns when suffixes are absent.
+- Spectronaut report tables. `PG.Quantity` is used for quantitative analyses, and `PG.IBAQ` is used as identification evidence for qualitative summaries.
 
-## Main Features
+DDA protein-level inputs:
 
-Formal V1.4 keeps the V1.3 protein-level post-processing workflow and adds standard quantitative matrix input.
+- FragPipe/MSFragger `combined_protein.tsv`; MaxLFQ intensity columns are used as label-free quantitative values.
+- PEAKS Online protein result tables; top proteins are selected within each protein group, Area columns are used for quantitative values, and sample-specific Coverage columns are used as identification evidence.
+- MaxQuant `proteinGroups.txt`; `LFQ intensity` columns are used as label-free quantitative values, and the first accession before a semicolon in `Protein IDs` is used by default.
 
-Core V1.3 features retained in V1.4:
+Standard quantitative matrices:
 
-- DIA-NN and Spectronaut protein-level result post-processing.
-- Protein identification summaries, Venn/UpSet plots, physicochemical property plots, correlation heatmaps, rank-abundance plots, CV ridgelines, PCA, UMAP, volcano plots, and expression heatmaps.
-- Machine-learning analyses: Random forest, L1, and RF + L1 combined.
-- Feature UMAP/heatmap and Slingshot pseudotime analysis.
-- Per-module controls for plot generation, dimensions, palettes, CSV export, previews, and output paths.
+- First column is the feature/protein identifier, remaining columns are sample quantitative values.
+- Two explicit zero-value modes are available: `0 is a valid quantitative value` and `0 represents missing or unquantified`.
+- Missing values represented as `NA`, `NaN`, blank cells, or empty strings are handled as missing.
 
-New in V1.4:
+After loading, users can still rename samples and assign groups manually. Identical group text means the same biological group.
 
-- Standard quantitative matrix input through the internal source type `standard_matrix`.
-- CSV and TSV matrix reading with arbitrary first-column and sample-column names.
-- Explicit zero-handling modes:
-  - `zero_is_value`: zero is retained as a valid quantitative value;
-  - `zero_is_missing`: zero is converted to missing only in the analysis matrix.
-- Raw standard-matrix values are retained separately from the downstream `analysis_quant_matrix`.
-- Standard matrix summaries use "available quantitative values" terminology rather than protein-identification terminology.
-- DIA-NN/Spectronaut physicochemical accession mapping is more stable when Protein name or Gene name row identifiers are duplicated and internally made unique.
-- The Input page uses a shorter `ProteoDIAPostZ Formal V1.4` title and a fixed developer identity area at the bottom of the left sidebar.
+## Main Analysis Modules
 
-## Input Types
+Qualitative and quantitative plots preserve the V1.x workflow with vector PDF output and per-plot CSV export. V2.0 also keeps feature UMAP/heatmap and Slingshot pseudotime support.
 
-### DIA-NN
+Dimension reduction:
 
-DIA-NN input behavior is preserved from V1.3. The app uses the DIA-NN quantity matrix for identification and quantitative downstream analyses.
+- PCA
+- UMAP
+- t-SNE
 
-### Spectronaut
+Machine learning:
 
-Spectronaut input behavior is preserved from V1.3. `PG.IBAQ` is used for identification/qualitative summaries, and `PG.Quantity` is used for quantitative analyses.
+- Random forest
+- L1-regularized model
+- RF + L1 combined feature selection
 
-### Standard Quantitative Matrix
+V2.0 adds more model evaluation outputs where applicable, including cross-validation details, confusion matrices, class metrics, ROC/AUC for binary comparisons, sensitivity, specificity, and stability-selection summaries. For small sample sizes, these outputs should be interpreted as exploratory evidence rather than independent clinical or biological validation.
 
-A standard quantitative matrix is a CSV or TSV feature-by-sample matrix:
+## Traceability Outputs
 
-- first row: column names;
-- first column: protein, gene, accession, or other feature identifiers;
-- second column onward: sample quantitative values.
+Each analysis module can write module outputs to the selected output directory. V2.0 adds run traceability files:
 
-The quantitative region accepts numeric values and explicit missing-value entries: blank cells, whitespace-only cells, `NA`, and `NaN`. `Inf`, `-Inf`, and other nonnumeric text are rejected.
+- `analysis_manifest.json`: input file, detected category/format, grouping, filtering, normalization, missing-value handling, method settings, app version, and output file list where available.
+- `analysis_summary.html`: a lightweight browser-readable summary of the same analysis run.
 
-Users must explicitly choose how numeric zero is interpreted. The app does not infer this from the data distribution or zero proportion.
+These files are generated outputs and are intentionally excluded from the source repository.
 
-## Repository Layout
+## Repository And Release Asset Boundary
 
-- `app/app.R`: Shiny UI and server wiring.
-- `app/R/analysis_core.R`: input parsing and analysis functions.
-- `app/annotations/`: tracked annotation tables used by built-in physicochemical annotation.
-- `tools/`: regression and smoke-test scripts.
-- `docs/`: handoff and V1.4 development notes.
-- `ProteoDIAPostZ_v1.4_launcher.cs`: V1.4 launcher source for building the Windows launcher executable.
-- `Run_ProteoDIAPostZ_v1.4.cmd`: fallback command launcher for a built portable package.
+This Git repository contains source code, scripts, documentation, tests, and lightweight built-in annotation CSV files required by the application source.
 
-## Development Checks
+The source repository does **not** commit:
 
-Representative V1.4 checks used during this update:
+- portable R runtime
+- `portable/Rlibs`
+- `outputs`
+- `logs`
+- ZIP archives
+- compiled `.exe` launchers
+- analysis-generated PDF, CSV, TSV, manifest, or HTML output files
+- local temporary configuration files that may contain machine-specific absolute paths
 
-```powershell
-Rscript tools/test_standard_matrix_parser.R
-Rscript tools/test_standard_matrix_shiny_integration.R
-Rscript tools/test_standard_matrix_downstream_smoke.R
-Rscript tools/test_v14_input_regression.R
-```
+The complete Windows portable package, including portable R/Rlibs and `ProteoPostZ_v2.0.exe`, is distributed separately as a GitHub Release asset.
 
-The full portable package was also validated from `F:\ProteoDIAPostZ_v1.4_windows_x86_release` using its own bundled portable R and R libraries, with no runtime dependency on the E-drive development repository or V1.3 release folder.
+## Run From Source
 
-## Running From Source
+Install R and the required R packages, or use the separate Windows portable package for a self-contained runtime. From the repository root:
 
-A source checkout requires a suitable local R installation and required R packages. For normal end users, use the complete portable Windows release asset instead.
-
-From a configured development environment:
-
-```powershell
+```bat
 Rscript run_app.R
 ```
 
@@ -105,3 +88,44 @@ Then open:
 ```text
 http://127.0.0.1:3840/
 ```
+
+The current Windows source launcher is:
+
+```text
+ProteoPostZ_v2.0_launcher.cs
+Run_ProteoPostZ_v2.0.cmd
+```
+
+The compiled launcher executable is not committed to this repository.
+
+## Repository Layout
+
+```text
+app/                         Shiny application and R analysis code
+app/R/analysis_core.R         Core input parsers, plotting, statistics, ML, and helper functions
+app/annotations/              Lightweight offline annotation CSV files
+tools/                       Regression and smoke-test scripts
+docs/                        Development notes and historical archived launchers
+README.md                    Current V2.0 source overview
+RELEASE_NOTES_v2.0.0.md      V2.0 release notes
+```
+
+Historical V1.4 launcher files are archived under `docs/archive/v1.4/`; historical release notes retain the old ProteoDIAPostZ name where that is factually correct.
+
+## V2.0 Test Scope
+
+The V2.0 source checks cover:
+
+- R syntax parsing for `app/app.R` and `app/R/analysis_core.R`
+- DIA-NN and Spectronaut protein-level input regression
+- FragPipe/MSFragger, PEAKS, and MaxQuant protein-level DDA input smoke tests
+- standard matrix zero-as-value and zero-as-missing modes
+- PCA, UMAP, and t-SNE smoke tests
+- random forest, L1, and RF + L1 machine-learning smoke tests
+- manifest and HTML summary generation-path checks
+- Slingshot compatibility smoke tests when local dependencies are available
+- static inspection of the Windows launcher and CMD startup scripts
+
+## 中文简要说明
+
+ProteoPostZ Formal V2.0 是 ProteoDIAPostZ V1.4 的后续版本。由于软件范围已经从 DIA 扩展到 DIA、DDA 以及用户整理的标准定量矩阵，软件名称去掉了 DIA。当前版本仍以蛋白水平结果为核心，推荐默认使用 accession 作为行标识，保留 PDF 矢量图和 CSV 导出，并新增 DDA 蛋白定量表输入、t-SNE、机器学习评估细节、`analysis_manifest.json` 和 `analysis_summary.html`。

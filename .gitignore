@@ -40,6 +40,7 @@ cache/
 tmp/
 temp/
 logs/
+%SystemDrive%/
 
 # OS/editor noise
 Thumbs.db
@@ -48,3 +49,13 @@ Desktop.ini
 ~$*
 *.swp
 *.swo
+
+# Generated run manifests and reports
+analysis_manifest.json
+analysis_summary.html
+**/analysis_manifest.json
+**/analysis_summary.html
+*.pdf
+*.csv
+*.tsv
+!app/annotations/*.csv
