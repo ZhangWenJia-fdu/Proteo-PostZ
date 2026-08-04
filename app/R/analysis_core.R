@@ -1104,31 +1104,34 @@ run_pca_umap <- function(mat, group_info, outdir, prefix = "all", top_features =
   ggplot2::ggsave(file.path(outdir, paste0(prefix, "_UMAP.pdf")), p2, width = width, height = height)
 }
 
-plot_expression_heatmap <- function(mat, group_info, out_pdf, out_csv, top_n = 100, row_cluster = "hclust", col_cluster = "hclust", kmeans_k = 4, width = 4.5, height = 4.5) {
+plot_expression_heatmap <- function(mat, group_info, out_pdf, out_csv, top_n = 100, row_cluster = "hclust", col_cluster = "hclust", row_kmeans_k = 4, col_kmeans_k = 4, width = 4.5, height = 4.5) {
   used <- preprocess_expr(mat, TRUE, 0.5)
   if (nrow(used) < 2 || ncol(used) < 2) stop("Expression heatmap requires at least two proteins and two samples after filtering.")
   vars <- apply(used, 1, var, na.rm = TRUE)
-  used <- used[order(vars, decreasing = TRUE)[seq_len(min(top_n, length(vars)))], , drop = FALSE]
+  selected <- rownames(used)[order(vars, decreasing = TRUE)[seq_len(min(top_n, length(vars)))]]
+  used <- used[rownames(used) %in% selected, , drop = FALSE]
   scaled <- t(scale(t(used)))
   scaled[!is.finite(scaled)] <- 0
   ann <- data.frame(Group = group_info$Group[match(colnames(scaled), group_info$Sample)])
   rownames(ann) <- colnames(scaled)
-  km <- if (row_cluster == "kmeans") kmeans(scaled, centers = min(kmeans_k, nrow(scaled)))$cluster else rep(NA_integer_, nrow(scaled))
+  row_km <- if (row_cluster == "kmeans") kmeans(scaled, centers = min(row_kmeans_k, nrow(scaled)))$cluster else rep(NA_integer_, nrow(scaled))
+  col_km <- if (col_cluster == "kmeans") kmeans(t(scaled), centers = min(col_kmeans_k, ncol(scaled)))$cluster else rep(NA_integer_, ncol(scaled))
+  row_order <- if (row_cluster == "kmeans") rownames(scaled)[order(row_km, seq_along(row_km))] else rownames(scaled)
+  col_order <- if (col_cluster == "kmeans") colnames(scaled)[order(col_km, seq_along(col_km))] else colnames(scaled)
+  plot_scaled <- scaled[row_order, col_order, drop = FALSE]
   grDevices::pdf(out_pdf, width = width, height = height)
-  ph <- pheatmap::pheatmap(scaled, scale = "none", cluster_rows = row_cluster == "hclust", cluster_cols = col_cluster == "hclust", kmeans_k = NA, annotation_col = ann, show_rownames = FALSE, border_color = NA)
+  ph <- pheatmap::pheatmap(plot_scaled, scale = "none", cluster_rows = row_cluster == "hclust", cluster_cols = col_cluster == "hclust", kmeans_k = NA, annotation_col = ann[colnames(plot_scaled), , drop = FALSE], show_rownames = FALSE, border_color = NA)
   grDevices::dev.off()
   row_order <- if (row_cluster == "hclust" && !is.null(ph$tree_row)) {
-    rownames(scaled)[ph$tree_row$order]
-  } else if (row_cluster == "kmeans") {
-    names(sort(km))
+    rownames(plot_scaled)[ph$tree_row$order]
   } else {
-    rownames(scaled)
+    row_order
   }
-  col_order <- if (col_cluster == "hclust" && !is.null(ph$tree_col)) colnames(scaled)[ph$tree_col$order] else colnames(scaled)
+  col_order <- if (col_cluster == "hclust" && !is.null(ph$tree_col)) colnames(plot_scaled)[ph$tree_col$order] else col_order
   ordered_scaled <- scaled[row_order, col_order, drop = FALSE]
-  data.table::fwrite(data.frame(ProteinID = rownames(ordered_scaled), KmeansCluster = km[match(rownames(ordered_scaled), names(km))], ordered_scaled, check.names = FALSE), out_csv)
-  data.table::fwrite(data.frame(RowOrder = seq_along(row_order), ProteinID = row_order, KmeansCluster = km[match(row_order, names(km))]), sub("\\.csv$", "_row_order.csv", out_csv))
-  data.table::fwrite(data.frame(ColOrder = seq_along(col_order), Sample = col_order, Group = as.character(group_info$Group[match(col_order, group_info$Sample)])), sub("\\.csv$", "_col_order.csv", out_csv))
+  data.table::fwrite(data.frame(ProteinID = rownames(ordered_scaled), KmeansCluster = row_km[match(rownames(ordered_scaled), rownames(scaled))], ordered_scaled, check.names = FALSE), out_csv)
+  data.table::fwrite(data.frame(RowOrder = seq_along(row_order), ProteinID = row_order, KmeansCluster = row_km[match(row_order, rownames(scaled))]), sub("\\.csv$", "_row_order.csv", out_csv))
+  data.table::fwrite(data.frame(ColOrder = seq_along(col_order), Sample = col_order, Group = as.character(group_info$Group[match(col_order, group_info$Sample)]), KmeansCluster = col_km[match(col_order, colnames(scaled))]), sub("\\.csv$", "_col_order.csv", out_csv))
 }
 run_volcano <- function(mat, group_info, group_a, group_b, out_pdf, out_csv, log2fc_cutoff = 1, adj_p_cutoff = 0.05, raw_p_cutoff = 0.05, fc_method = c("log2_then_diff", "ratio_then_log2"), test_method = c("limma", "ttest"), sig_metric = c("adj_p", "raw_p"), width = 3.3, height = 3.3) {
   fc_method <- match.arg(fc_method)

@@ -22,10 +22,12 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 ## UI And Export State
 
 - The input preview count table displays both count fields.
+- The input Sample count preview retains the pre-existing DT table behavior, including its existing `Show entries` and search controls.
 - The sample protein count barplot module supports choosing identification count or quantified protein count.
 - Standard matrix barplot selection exposes quantified count only.
 - MaxQuant displays the approximation note in English where relevant.
 - Count-related CSV exports retain both count fields; generated plot titles and axis labels follow the selected count type.
+- Expression and Feature-protein heatmaps independently support row and column `Hierarchical`, `K-means`, and `None` choices. The corresponding row/column K-means `k` control is shown only when that direction uses K-means; `None` preserves input order.
 
 ## Validation Completed
 
@@ -33,6 +35,8 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 - `Rscript -e "parse('E:/Project/ProteomicsDIAApp_Project/repo/app/R/analysis_core.R')"`: passed with `CORE_PARSE_OK`.
 - `Rscript E:\Project\ProteomicsDIAApp_Project\repo\tools\test_v201_count_modes.R`: passed with `V201_COUNT_MODES_OK`.
 - `Rscript E:\Project\ProteomicsDIAApp_Project\repo\tools\test_v14_input_regression.R`: passed with `V14_INPUT_REGRESSION_OK`.
+- Expression heatmap row/column combinations: 9/9 passed, with PDF and CSV outputs generated for every combination.
+- Feature-protein heatmap row/column combinations: 9/9 passed, with PDF and CSV outputs generated for every combination.
 - Source app startup on `http://127.0.0.1:3840/`: HTTP 200 verified.
 
 Known non-blocking local warnings during tests: Shiny package build-version warning, systemfonts/textshaping Freetype warning, and an existing bslib `layout_columns` breakpoint warning. These are environment or existing UI warnings and were not introduced by the V2.0.1 count logic.

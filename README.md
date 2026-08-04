@@ -10,6 +10,8 @@ Current source version: **ProteoPostZ Formal V2.0.1**.
 - Sample count tables retain both count fields, and the sample count barplot supports switching between identification count and quantified protein count.
 - FragPipe/MSFragger and PEAKS now keep identification counts separate from quantitative non-missing counts by using their existing sample-level identification evidence.
 - MaxQuant still lacks an independent sample-level identification evidence field in the current `proteinGroups.txt` importer, so identification count is currently approximated by non-missing `LFQ intensity`.
+- Expression and Feature-protein heatmaps support independent row and column `Hierarchical`, `K-means`, and `None` choices. Row/column `k` settings appear only for the corresponding K-means choice; `None` preserves the input order.
+- The input Sample count preview retains its existing table controls and sample-count display behavior.
 
 ## Why The Name Changed
 
