@@ -12,6 +12,7 @@ Current source version: **ProteoPostZ Formal V2.0.1**.
 - MaxQuant still lacks an independent sample-level identification evidence field in the current `proteinGroups.txt` importer, so identification count is currently approximated by non-missing `LFQ intensity`.
 - Expression and Feature-protein heatmaps support independent row and column `Hierarchical`, `K-means`, and `None` choices. Row/column `k` settings appear only for the corresponding K-means choice; `None` preserves the input order.
 - The input Sample count preview retains its existing table controls and sample-count display behavior.
+- This is a patch release of Formal V2.0; the main input formats and downstream analysis framework are unchanged.
 
 ## Why The Name Changed
 
@@ -82,7 +83,7 @@ The source repository does **not** commit:
 - analysis-generated PDF, CSV, TSV, manifest, or HTML output files
 - local temporary configuration files that may contain machine-specific absolute paths
 
-The complete Windows portable package, including portable R/Rlibs and `ProteoPostZ_v2.0.exe`, is distributed separately as a GitHub Release asset.
+The complete Windows portable package, including portable R/Rlibs and `ProteoPostZ_v2.0.1.exe`, is distributed separately as a GitHub Release asset.
 
 ## Run From Source
 
@@ -101,8 +102,8 @@ http://127.0.0.1:3840/
 The current Windows source launcher is:
 
 ```text
-ProteoPostZ_v2.0_launcher.cs
-Run_ProteoPostZ_v2.0.cmd
+ProteoPostZ_v2.0.1_launcher.cs
+Run_ProteoPostZ_v2.0.1.cmd
 ```
 
 The compiled launcher executable is not committed to this repository.
@@ -115,8 +116,9 @@ app/R/analysis_core.R         Core input parsers, plotting, statistics, ML, and 
 app/annotations/              Lightweight offline annotation CSV files
 tools/                       Regression and smoke-test scripts
 docs/                        Development notes and historical archived launchers
-README.md                    Current V2.0 source overview
+README.md                    Current V2.0.1 source overview
 RELEASE_NOTES_v2.0.0.md      V2.0 release notes
+RELEASE_NOTES_v2.0.1.md      V2.0.1 patch release notes
 ```
 
 Historical V1.4 launcher files are archived under `docs/archive/v1.4/`; historical release notes retain the old ProteoDIAPostZ name where that is factually correct.
