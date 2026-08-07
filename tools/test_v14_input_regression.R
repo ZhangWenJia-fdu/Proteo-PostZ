@@ -7,6 +7,7 @@ app_root <- file.path(package_root, 'app')
 setwd(app_root)
 source('app.R', local = TRUE)
 source('R/analysis_core.R')
+source(file.path(package_root, 'tools', 'test_input_paths.R'))
 
 tmp <- file.path(package_root, 'outputs', 'v14_input_regression')
 dir.create(tmp, recursive = TRUE, showWarnings = FALSE)
@@ -20,7 +21,7 @@ expect_error <- function(expr, pattern) {
 }
 
 # DIA-NN regression: load, sample names, identification counts, one identification module, one quantitative module.
-diann <- extract_protein_data('F:/test/DIANNreport.pg_matrix.tsv', 'DIANN', 'd', 'protein_name')
+diann <- extract_protein_data(resolve_external_test_file('PROTEOPOSTZ_DIANN_TEST_FILE'), 'DIANN', 'd', 'protein_name')
 expect_true(nrow(diann$quantity) == 4862 && ncol(diann$quantity) == 8, 'DIA-NN quantity dimensions changed')
 expect_true(identical(diann$samples, colnames(diann$quantity)), 'DIA-NN sample names not aligned with quantity matrix')
 expect_true('Identified_Protein_Count' %in% colnames(diann$counts), 'DIA-NN identification count column missing')
@@ -31,7 +32,7 @@ plot_rank_abundance(diann$quantity, diann_group, file.path(tmp, 'diann_rank.pdf'
 expect_true(all(file.exists(file.path(tmp, c('diann_idbar.pdf', 'diann_rank.pdf')))), 'DIA-NN regression output missing')
 
 # Spectronaut regression: load, sample names, PG.IBAQ identification semantics, one identification module, one quantitative module.
-spec <- extract_protein_data('F:/test/Spectronaut20260428_141042_20260428-YGQ-Celegans-repeatabilitytest_Report_1_8.tsv', 'Spectronaut', 'd', 'protein_name')
+spec <- extract_protein_data(resolve_external_test_file('PROTEOPOSTZ_SPECTRONAUT_TEST_FILE'), 'Spectronaut', 'd', 'protein_name')
 expect_true(nrow(spec$quantity) == 3734 && ncol(spec$quantity) == 8, 'Spectronaut quantity dimensions changed')
 expect_true(!is.null(spec$ibaq) && identical(colnames(spec$ibaq), colnames(spec$quantity)), 'Spectronaut PG.IBAQ qualitative matrix not aligned')
 expect_true(identical(spec$samples, colnames(spec$quantity)), 'Spectronaut sample names not aligned with quantity matrix')

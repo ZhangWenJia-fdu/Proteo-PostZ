@@ -31,10 +31,10 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 
 ## Validation Completed
 
-- `Rscript -e "parse('E:/Project/ProteomicsDIAApp_Project/repo/app/app.R')"`: passed with `APP_PARSE_OK`.
-- `Rscript -e "parse('E:/Project/ProteomicsDIAApp_Project/repo/app/R/analysis_core.R')"`: passed with `CORE_PARSE_OK`.
-- `Rscript E:\Project\ProteomicsDIAApp_Project\repo\tools\test_v201_count_modes.R`: passed with `V201_COUNT_MODES_OK`.
-- `Rscript E:\Project\ProteomicsDIAApp_Project\repo\tools\test_v14_input_regression.R`: passed with `V14_INPUT_REGRESSION_OK`.
+- From the repository root, `Rscript -e "parse(file = 'app/app.R'); parse(file = 'app/R/analysis_core.R')"` passed.
+- From the repository root, `Rscript tools/test_v201_count_modes.R` passed with `V201_COUNT_MODES_OK`.
+- From the repository root, `Rscript tools/test_v14_input_regression.R` passed with `V14_INPUT_REGRESSION_OK`.
+- DIA-NN and Spectronaut regression inputs are supplied through `PROTEOPOSTZ_DIANN_TEST_FILE` and `PROTEOPOSTZ_SPECTRONAUT_TEST_FILE`; local file paths are not stored in the repository.
 - Expression heatmap row/column combinations: 9/9 passed, with PDF and CSV outputs generated for every combination.
 - Feature-protein heatmap row/column combinations: 9/9 passed, with PDF and CSV outputs generated for every combination.
 - Source app startup on `http://127.0.0.1:3840/`: HTTP 200 verified.
@@ -43,7 +43,7 @@ Known non-blocking local warnings during tests: Shiny package build-version warn
 
 ## Not Completed In This Source Commit
 
-- No GitHub push.
+- Source cleanup is ready for the next GitHub source push.
 - No tag.
 - No GitHub Release.
 - No formal release ZIP.

@@ -11,6 +11,7 @@ app_root <- file.path(package_root, "app")
 setwd(app_root)
 source("app.R", local = TRUE)
 source("R/analysis_core.R")
+source(file.path(package_root, "tools", "test_input_paths.R"))
 
 out <- file.path(package_root, "outputs", "v201_count_modes")
 dir.create(out, recursive = TRUE, showWarnings = FALSE)
@@ -91,11 +92,11 @@ expect_true(identical(std_a$counts$Quantified_Protein_Count, c(2, 2)), "Standard
 expect_true(identical(std_b$counts$Quantified_Protein_Count, c(1, 1)), "Standard matrix mode B quantified counts are incorrect")
 expect_true(all(is.na(std_a$counts$Identified_Protein_Count)) && all(is.na(std_b$counts$Identified_Protein_Count)), "Standard matrix should not fabricate identification counts")
 
-diann <- extract_protein_data("F:/test/DIANNreport.pg_matrix.tsv", "DIANN", "d", "protein_name")
+diann <- extract_protein_data(resolve_external_test_file("PROTEOPOSTZ_DIANN_TEST_FILE"), "DIANN", "d", "protein_name")
 expect_true("Quantified_Protein_Count" %in% colnames(diann$counts), "DIA-NN quantified count column missing")
 expect_true(identical(diann$counts$Identified_Protein_Count, diann$counts$Quantified_Protein_Count), "DIA-NN count columns unexpectedly diverged")
 
-spec <- extract_protein_data("F:/test/Spectronaut20260428_141042_20260428-YGQ-Celegans-repeatabilitytest_Report_1_8.tsv", "Spectronaut", "d", "protein_name")
+spec <- extract_protein_data(resolve_external_test_file("PROTEOPOSTZ_SPECTRONAUT_TEST_FILE"), "Spectronaut", "d", "protein_name")
 expect_true(all(spec$counts$Identified_Protein_Count == colSums(!is.na(spec$ibaq))), "Spectronaut identified counts no longer use PG.IBAQ")
 expect_true(all(spec$counts$Quantified_Protein_Count == colSums(!is.na(spec$quantity))), "Spectronaut quantified counts no longer use PG.Quantity non-missing values")
 

@@ -123,6 +123,8 @@ RELEASE_NOTES_v2.0.1.md      V2.0.1 patch release notes
 
 Historical V1.4 launcher files are archived under `docs/archive/v1.4/`; historical release notes retain the old ProteoDIAPostZ name where that is factually correct.
 
+Regression scripts that exercise external DIA-NN or Spectronaut files read their paths from `PROTEOPOSTZ_DIANN_TEST_FILE` and `PROTEOPOSTZ_SPECTRONAUT_TEST_FILE`. These local environment variables are intentionally not committed with the source.
+
 ## V2.0 Test Scope
 
 The V2.0 source checks cover:

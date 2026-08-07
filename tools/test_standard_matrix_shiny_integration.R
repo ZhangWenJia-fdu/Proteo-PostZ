@@ -6,6 +6,7 @@ package_root <- normalizePath(file.path(dirname(script_path), '..'), winslash = 
 app_root <- file.path(package_root, 'app')
 setwd(app_root)
 source('app.R', local = TRUE)
+source(file.path(package_root, 'tools', 'test_input_paths.R'))
 
 tmp <- file.path(package_root, 'outputs', 'standard_matrix_shiny_test')
 dir.create(tmp, recursive = TRUE, showWarnings = FALSE)
@@ -79,12 +80,12 @@ shiny::testServer(server, {
 })
 
 source('R/analysis_core.R')
-diann <- extract_protein_data('F:/test/DIANNreport.pg_matrix.tsv', 'DIANN', 'd', 'protein_name')
+diann <- extract_protein_data(resolve_external_test_file('PROTEOPOSTZ_DIANN_TEST_FILE'), 'DIANN', 'd', 'protein_name')
 diann_group <- make_group_info(diann$samples, rep(c('G1', 'G2'), each = 4))
 plot_rank_abundance(diann$quantity, diann_group, file.path(tmp, 'diann_rank.pdf'), file.path(tmp, 'diann_rank.csv'), 3, 3)
 expect_true(file.exists(file.path(tmp, 'diann_rank.pdf')), 'DIA-NN rank module did not produce PDF')
 
-spectronaut <- extract_protein_data('F:/test/Spectronaut20260428_141042_20260428-YGQ-Celegans-repeatabilitytest_Report_1_8.tsv', 'Spectronaut', 'd', 'protein_name')
+spectronaut <- extract_protein_data(resolve_external_test_file('PROTEOPOSTZ_SPECTRONAUT_TEST_FILE'), 'Spectronaut', 'd', 'protein_name')
 spectronaut_group <- make_group_info(spectronaut$samples, rep(c('G1', 'G2'), each = 4))
 plot_rank_abundance(spectronaut$quantity, spectronaut_group, file.path(tmp, 'spectronaut_rank.pdf'), file.path(tmp, 'spectronaut_rank.csv'), 3, 3)
 expect_true(file.exists(file.path(tmp, 'spectronaut_rank.pdf')), 'Spectronaut rank module did not produce PDF')

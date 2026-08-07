@@ -6,10 +6,11 @@ package_root <- normalizePath(file.path(dirname(script_path), '..'), winslash = 
 app_root <- file.path(package_root, 'app')
 setwd(app_root)
 source('R/analysis_core.R')
+source(file.path(package_root, 'tools', 'test_input_paths.R'))
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 out <- file.path(package_root, 'outputs', 'self_test')
 dir.create(out, recursive = TRUE, showWarnings = FALSE)
-d <- extract_protein_data('F:/test/DIANNreport.pg_matrix.tsv', 'DIANN', 'd', 'protein_name')
+d <- extract_protein_data(resolve_external_test_file('PROTEOPOSTZ_DIANN_TEST_FILE'), 'DIANN', 'd', 'protein_name')
 g <- make_group_info(d$samples, rep(c('G1','G2'), each = 4))
 plot_identification_bar(d$counts, g, file.path(out, 'id_bar.pdf'), file.path(out, 'id_summary.csv'), 3, 3)
 run_slingshot_pseudotime(d$quantity, g, file.path(out, 'slingshot'), reduction = 'PCA', start_group = 'G1', end_group = 'G2', width = 4, height = 4)
