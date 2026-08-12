@@ -1,4 +1,4 @@
-# ProteoPostZ Formal V2.0.1
+# ProteoPostZ Formal V2.0.2
 # Developed by Wenjia Zhang
 
 options(shiny.maxRequestSize = 1024^3)
@@ -10,7 +10,7 @@ library(dplyr)
 source(file.path("R", "analysis_core.R"), encoding = "UTF-8")
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
-app_version <- "Formal V2.0.1"
+app_version <- "Formal V2.0.2"
 app_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 package_root <- normalizePath(file.path(app_root, ".."), winslash = "/", mustWork = FALSE)
 annotation_dir <- file.path(app_root, "annotations")
@@ -316,6 +316,11 @@ server <- function(input, output, session) {
   count_metric_choices <- function(dat = rv$data) {
     if (is_standard_matrix_data(dat)) {
       c("Quantified protein count" = "Quantified_Protein_Count")
+    } else if (identical(dat$input_source %||% "", "peaks") && identical(dat$peaks_subtype %||% "", "lfq")) {
+      c(
+        "Identification count (unavailable)" = "Identified_Protein_Count",
+        "Quantified protein count" = "Quantified_Protein_Count"
+      )
     } else {
       c(
         "Identification count" = "Identified_Protein_Count",
@@ -326,7 +331,7 @@ server <- function(input, output, session) {
   active_count_column <- reactive({
     req(rv$data)
     choices <- unname(count_metric_choices(rv$data))
-    requested <- input$count_metric %||% if (is_standard_matrix_data()) "Quantified_Protein_Count" else "Identified_Protein_Count"
+    requested <- input$count_metric %||% if (is_standard_matrix_data() || (identical(rv$data$input_source %||% "", "peaks") && identical(rv$data$peaks_subtype %||% "", "lfq"))) "Quantified_Protein_Count" else "Identified_Protein_Count"
     if (requested %in% choices) requested else choices[[1]]
   })
   count_metric_text <- function(count_col = active_count_column()) {
@@ -726,7 +731,7 @@ server <- function(input, output, session) {
       "count_metric",
       "Count type",
       choices = count_metric_choices(rv$data),
-      selected = if (is_standard_matrix_data()) "Quantified_Protein_Count" else "Identified_Protein_Count"
+      selected = if (is_standard_matrix_data() || (identical(rv$data$input_source %||% "", "peaks") && identical(rv$data$peaks_subtype %||% "", "lfq"))) "Quantified_Protein_Count" else "Identified_Protein_Count"
     )
   })
   output$idbar_count_note <- renderUI({
@@ -741,6 +746,12 @@ server <- function(input, output, session) {
       return(div(
         class = "small-note",
         rv$data$count_approximation_note_en %||% ""
+      ))
+    }
+    if (identical(rv$data$input_source %||% "", "peaks") && identical(rv$data$peaks_subtype %||% "", "lfq")) {
+      return(div(
+        class = "small-note",
+        rv$data$count_approximation_note_en %||% "Sample-level identification counts are unavailable for this PEAKS LFQ result."
       ))
     }
     NULL
@@ -766,6 +777,9 @@ server <- function(input, output, session) {
       wh <- pts("idbar")
       count_col <- active_count_column()
       labels <- count_metric_text(count_col)
+      if (identical(count_col, "Identified_Protein_Count") && all(is.na(data_for_analysis()$counts[[count_col]]))) {
+        stop(rv$data$count_approximation_note_en %||% "Sample-level identification counts are unavailable for this input.", call. = FALSE)
+      }
       if (is_standard_matrix_data()) {
         pdf <- file.path(d, "available_quantitative_values_barplot.pdf")
         csv <- file.path(d, "available_quantitative_values_group_summary.csv")

@@ -146,11 +146,8 @@ detect_proteome_discoverer_signature <- function(dat) {
 }
 
 detect_peaks_signature <- function(dat) {
-  qcols <- grep_cols(dat, "(^Area[: ]| Area$|^Area$)")
-  if (length(qcols) > 0 && has_any_col(dat, c("Protein ID", "Protein Group", "Accession", "Gene"))) {
-    group_note <- if ("Protein Group" %in% colnames(dat) && "Top" %in% colnames(dat)) " Protein Group/Top columns detected for PEAKS Online protein-group reduction." else ""
-    return(paste0("PEAKS signature: ", length(qcols), " Area columns.", group_note))
-  }
+  schema <- peaks_schema(dat)
+  if (!is.null(schema)) return(schema$evidence)
   NULL
 }
 
@@ -176,7 +173,16 @@ detect_input_format <- function(file, input_family = c("dia", "dda")) {
   for (entry in input_format_registry(input_family)) {
     evidence <- entry$detector(raw)
     if (!is.null(evidence)) {
-      hits[[length(hits) + 1]] <- list(id = entry$id, label = entry$label, evidence = evidence)
+      if (identical(entry$id, "peaks")) {
+        schema <- peaks_schema(raw)
+        if (is.null(schema) || identical(schema$id, "ambiguous")) {
+          hits[[length(hits) + 1]] <- list(id = NA_character_, label = "PEAKS ambiguous", evidence = schema$evidence %||% "Unsupported or ambiguous PEAKS protein result schema.")
+        } else {
+          hits[[length(hits) + 1]] <- list(id = entry$id, label = schema$label, evidence = evidence)
+        }
+      } else {
+        hits[[length(hits) + 1]] <- list(id = entry$id, label = entry$label, evidence = evidence)
+      }
     }
   }
   if (length(hits) == 0) {
@@ -513,6 +519,11 @@ dda_quantity_columns <- function(raw, software = c("fragpipe", "proteome_discove
   if (software == "maxquant") return(grep_cols(raw, "^LFQ intensity "))
   if (software == "fragpipe") return(grep_cols(raw, " MaxLFQ Intensity$"))
   if (software == "proteome_discoverer") return(grep_cols(raw, "^Abundance"))
+  if (software == "peaks") {
+    schema <- peaks_schema(raw)
+    if (is.null(schema) || identical(schema$id, "ambiguous")) return(character())
+    return(if (identical(schema$id, "db")) peaks_db_quantity_columns(raw) else peaks_lfq_quantity_columns(raw))
+  }
   grep_cols(raw, "(^Area[: ]| Area$|^Area$)")
 }
 
@@ -680,9 +691,38 @@ peaks_coverage_columns <- function(raw) {
   cols[nzchar(trimws(sub("^Coverage\\(%\\)\\s+", "", cols)))]
 }
 
+peaks_db_quantity_columns <- function(raw) {
+  grep_cols(raw, "^Area\\s+.+$", ignore.case = FALSE)
+}
+
+peaks_lfq_quantity_columns <- function(raw) {
+  cols <- grep_cols(raw, "^.+\\s+Area$", ignore.case = FALSE)
+  cols[!grepl("^Group\\s+[0-9]+\\s+Area$", cols, ignore.case = TRUE)]
+}
+
+peaks_schema <- function(raw) {
+  cols <- colnames(raw)
+  if (!all(c("Protein Group", "Top", "Accession") %in% cols)) return(NULL)
+  db_q <- peaks_db_quantity_columns(raw)
+  coverage <- peaks_coverage_columns(raw)
+  lfq_q <- peaks_lfq_quantity_columns(raw)
+  lfq_markers <- c("Sample Profile (Ratio)", "Group Profile (Ratio)", "Significance")
+  has_lfq_marker <- any(lfq_markers %in% cols) || any(grepl("^Group\\s+[0-9]+\\s+Area$", cols, ignore.case = TRUE))
+  is_db <- length(db_q) > 0 && length(coverage) > 0
+  is_lfq <- length(lfq_q) > 0 && has_lfq_marker
+  if (is_db) {
+    mixed_note <- if (is_lfq) " LFQ-style fields are also present; DB schema takes precedence." else ""
+    return(list(id = "db", label = "PEAKS DB protein result", mixed_db_lfq = is_lfq, evidence = paste0("PEAKS DB protein result: ", length(db_q), " Area <sample> columns and ", length(coverage), " sample-specific Coverage(%) columns.", mixed_note)))
+  }
+  if (is_lfq) return(list(id = "lfq", label = "PEAKS LFQ protein result", evidence = paste0("PEAKS LFQ protein result: ", length(lfq_q), " <sample> Area columns; LFQ profile/group fields detected.")))
+  NULL
+}
+
 peaks_top_keep_index <- function(raw) {
   if (!"Protein Group" %in% colnames(raw)) return(seq_len(nrow(raw)))
   group <- as.character(raw[["Protein Group"]])
+  missing_group <- is.na(group) | trimws(group) == ""
+  group[missing_group] <- paste0("__missing_group_", which(missing_group))
   top <- if ("Top" %in% colnames(raw)) {
     toupper(trimws(as.character(raw[["Top"]]))) %in% c("TRUE", "T", "YES", "Y", "1")
   } else {
@@ -700,10 +740,11 @@ peaks_top_keep_index <- function(raw) {
 extract_peaks_protein_data <- function(file, row_id = c("protein_name", "gene_name", "accession")) {
   row_id <- match.arg(row_id)
   raw_all <- read_result_file(file)
-  qcols <- dda_quantity_columns(raw_all, "peaks")
-  if (length(qcols) == 0) stop("No PEAKS Area columns were found.")
-  coverage_cols <- peaks_coverage_columns(raw_all)
-  if (length(coverage_cols) == 0) stop("No PEAKS sample-specific Coverage(%) columns were found. The unsuffixed Coverage(%) column is a global search summary and is not used as a sample identification field.")
+  schema <- peaks_schema(raw_all)
+  if (is.null(schema)) stop("Unsupported or ambiguous PEAKS protein result schema. Expected DB-style Area/Coverage columns or LFQ-style sample Area/profile fields.")
+  if (identical(schema$id, "ambiguous")) stop(schema$evidence)
+  qcols <- if (identical(schema$id, "db")) peaks_db_quantity_columns(raw_all) else peaks_lfq_quantity_columns(raw_all)
+  coverage_cols <- if (identical(schema$id, "db")) peaks_coverage_columns(raw_all) else character()
   keep_idx <- peaks_top_keep_index(raw_all)
   raw <- raw_all[keep_idx, , drop = FALSE]
 
@@ -724,13 +765,17 @@ extract_peaks_protein_data <- function(file, row_id = c("protein_name", "gene_na
   qmat[qmat == 0] <- NA_real_
   colnames(qmat) <- clean_dda_sample_name(qcols, "peaks")
 
-  coverage_mat <- as.data.frame(lapply(raw[, coverage_cols, drop = FALSE], take_numeric), check.names = FALSE)
-  coverage_mat[coverage_mat == 0] <- NA_real_
-  colnames(coverage_mat) <- clean_dda_sample_name(sub("^Coverage\\(%\\)\\s+", "Area ", coverage_cols), "peaks")
-  common_samples <- intersect(colnames(qmat), colnames(coverage_mat))
-  if (length(common_samples) == 0) stop("PEAKS Area sample columns and sample-specific Coverage(%) columns could not be matched by sample name.")
-  qmat <- qmat[, common_samples, drop = FALSE]
-  coverage_mat <- coverage_mat[, common_samples, drop = FALSE]
+  if (identical(schema$id, "db")) {
+    coverage_mat <- as.data.frame(lapply(raw[, coverage_cols, drop = FALSE], take_numeric), check.names = FALSE)
+    coverage_mat[coverage_mat == 0] <- NA_real_
+    colnames(coverage_mat) <- clean_dda_sample_name(sub("^Coverage\\(%\\)\\s+", "Area ", coverage_cols), "peaks")
+    common_samples <- intersect(colnames(qmat), colnames(coverage_mat))
+    if (length(common_samples) == 0) stop("PEAKS DB Area sample columns and sample-specific Coverage(%) columns could not be matched by sample name.")
+    qmat <- qmat[, common_samples, drop = FALSE]
+    coverage_mat <- coverage_mat[, common_samples, drop = FALSE]
+  } else {
+    coverage_mat <- matrix(NA_real_, nrow = nrow(qmat), ncol = ncol(qmat), dimnames = dimnames(qmat))
+  }
 
   keep <- !is.na(row_values) & row_values != ""
   if (!any(keep)) stop("No non-empty feature identifiers were found in the selected PEAKS identifier column: ", selected_id_col)
@@ -756,7 +801,7 @@ extract_peaks_protein_data <- function(file, row_id = c("protein_name", "gene_na
   ident <- as.matrix(ident)
   storage.mode(quantity) <- "numeric"
   storage.mode(ident) <- "numeric"
-  counts <- make_sample_count_table(quantity, ident)
+  counts <- make_sample_count_table(quantity, ident, identified_available = identical(schema$id, "db"))
   list(
     raw = raw,
     raw_all = raw_all,
@@ -766,10 +811,12 @@ extract_peaks_protein_data <- function(file, row_id = c("protein_name", "gene_na
     ibaq = NULL,
     counts = counts,
     software = "peaks",
+    peaks_subtype = schema$id,
     input_family = "dda",
     input_source = "peaks",
     data_level = "protein",
-    format_evidence = "PEAKS Online protein table: one row retained per Protein Group using Top == TRUE, first TRUE wins; Area zeros treated as missing; sample Coverage(%) nonzero values define identification.",
+    format_evidence = if (identical(schema$id, "db")) "PEAKS DB protein result: one row retained per Protein Group using Top == TRUE, first TRUE wins; Area zeros treated as missing; sample-specific Coverage(%) > 0 defines identification." else "PEAKS LFQ protein result: one row retained per Protein Group using Top == TRUE, first TRUE wins; sample-level <sample> Area values are used directly as LFQ abundance and zeros are treated as missing; sample-level identification evidence is unavailable.",
+    count_approximation_note_en = if (identical(schema$id, "lfq")) "Sample-level identification counts are unavailable because this PEAKS LFQ protein result does not contain sample-specific identification evidence." else NULL,
     features = rownames(quantity),
     samples = colnames(quantity)
   )
@@ -869,7 +916,9 @@ load_input_dataset <- function(file, input_family = c("dia", "dda", "standard_ma
   dat$input_family <- input_family
   dat$input_source <- selected_format
   dat$data_level <- dat$data_level %||% "protein"
-  dat$format_label <- labels[[selected_format]] %||% selected_format
+  dat$format_label <- if (identical(selected_format, "peaks") && !is.null(dat$peaks_subtype)) {
+    if (identical(dat$peaks_subtype, "db")) "PEAKS DB protein result" else "PEAKS LFQ protein result"
+  } else labels[[selected_format]] %||% selected_format
   dat$format_evidence <- detected$evidence %||% "Format selected manually."
   dat
 }
@@ -897,7 +946,12 @@ plot_sample_count_bar <- function(counts, group_info, count_col, out_pdf, out_cs
   df <- dplyr::left_join(counts, group_info, by = "Sample")
   summary <- df |>
     dplyr::group_by(Group) |>
-    dplyr::summarise(Mean = mean(.data[[count_col]], na.rm = TRUE), SD = sd(.data[[count_col]], na.rm = TRUE), N = dplyr::n(), .groups = "drop")
+    dplyr::summarise(
+      Mean = if (all(is.na(.data[[count_col]]))) NA_real_ else mean(.data[[count_col]], na.rm = TRUE),
+      SD = if (sum(!is.na(.data[[count_col]])) < 2) NA_real_ else stats::sd(.data[[count_col]], na.rm = TRUE),
+      N = sum(!is.na(.data[[count_col]])),
+      .groups = "drop"
+    )
   summary$Count_Column <- count_col
   data.table::fwrite(df, sub("\\.csv$", "_sample_counts.csv", out_csv))
   data.table::fwrite(summary, out_csv)

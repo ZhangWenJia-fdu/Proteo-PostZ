@@ -7,7 +7,7 @@ using System.Threading;
 using System.Windows.Forms;
 
 class Launcher {
-  const string AppTitle = "ProteoPostZ Formal V2.0.1";
+  const string AppTitle = "ProteoPostZ Formal V2.0.2";
   const string Url = "http://127.0.0.1:3840/";
   const string Host = "127.0.0.1";
   const int Port = 3840;

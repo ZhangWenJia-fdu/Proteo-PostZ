@@ -1,6 +1,10 @@
 # ProteoPostZ Current Handoff
 
-Current development version: ProteoPostZ Formal V2.0.1.
+Current development version: ProteoPostZ Formal V2.0.2.
+
+## V2.0.2 Release Scope
+
+V2.0.2 is a source and portable-runtime update focused on PEAKS Online protein-result input. No unrelated analysis algorithm or input-format semantics were changed. The release package is prepared separately from the source repository and excludes local test data, generated outputs, logs, and test records.
 
 ## V2.0.1 Count Definitions
 
@@ -9,6 +13,14 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 - `Quantified_Protein_Count`: per-sample count of non-missing values in the internal quantitative matrix.
 - `Identified_Protein_Count`: per-sample count of non-missing values in the internal qualitative or identification-evidence matrix.
 - Exported sample count data keeps both `Identified_Protein_Count` and `Quantified_Protein_Count`.
+
+## V2.0.2 PEAKS Input Update
+
+- One PEAKS protein file is schema-detected as either `PEAKS DB protein result` or `PEAKS LFQ protein result`; the filename is not used for subtype detection. When DB and LFQ-style fields are mixed, DB schema takes precedence.
+- DB uses `Area <sample>` for quantitative values and sample-specific `Coverage(%) <sample> > 0` for identification.
+- LFQ uses `<sample> Area` for quantitative values and excludes `Group N Area`, ratio/profile, significance, and other non-sample fields. LFQ sample-level identification evidence is unavailable, so `Identified_Protein_Count` is `NA` while `Quantified_Protein_Count` counts non-missing LFQ Area values.
+- Both subtypes retain one representative row per `Protein Group`: the first `Top == TRUE` row in source order, or the first group row when no Top row exists. No within-group abundance aggregation is performed.
+- The detected subtype is shown in the input preview. LFQ identification counts remain unavailable (`NA`) and the UI explains that sample-level identification evidence is absent; choosing that metric for the barplot returns a clear unavailable message.
 
 ## Input-Specific Semantics
 
@@ -31,6 +43,13 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 
 ## Validation Completed
 
+- Current source version and visible app title are `ProteoPostZ Formal V2.0.2`.
+- PEAKS DB, PEAKS LFQ, and mixed DB/LFQ schema precedence checks passed using local development inputs supplied outside the repository.
+- PEAKS LFQ preview/export/barplot handling passed with unavailable identification counts and valid quantified counts.
+- The unpacked package at `F:\ProteoPostZ_v2.0.2_windows_x86_release` contains 34,775 files and was verified at approximately 1.24 GB before user-side compression.
+- Package launch from a stopped state returned HTTP 200 at `http://127.0.0.1:3840/` and exposed Formal V2.0.2.
+- The package audit found no application `logs`, `outputs`, `Rplots.pdf`, analysis manifests/summaries, test directories, or local test records.
+
 - From the repository root, `Rscript -e "parse(file = 'app/app.R'); parse(file = 'app/R/analysis_core.R')"` passed.
 - From the repository root, `Rscript tools/test_v201_count_modes.R` passed with `V201_COUNT_MODES_OK`.
 - From the repository root, `Rscript tools/test_v14_input_regression.R` passed with `V14_INPUT_REGRESSION_OK`.
@@ -39,12 +58,10 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 - Feature-protein heatmap row/column combinations: 9/9 passed, with PDF and CSV outputs generated for every combination.
 - Source app startup on `http://127.0.0.1:3840/`: HTTP 200 verified.
 
-Known non-blocking local warnings during tests: Shiny package build-version warning, systemfonts/textshaping Freetype warning, and an existing bslib `layout_columns` breakpoint warning. These are environment or existing UI warnings and were not introduced by the V2.0.1 count logic.
+Known non-blocking local warnings during tests: Shiny package build-version warning, systemfonts/textshaping Freetype warning, and an existing bslib `layout_columns` breakpoint warning. These are environment or existing UI warnings and were not introduced by the V2.0.2 PEAKS input logic.
 
-## Not Completed In This Source Commit
+## Publication Boundary
 
-- Source cleanup is ready for the next GitHub source push.
-- No tag.
-- No GitHub Release.
-- No formal release ZIP.
-- No SHA256 checksum for a formal release asset.
+- The V2.0.2 source commit is recorded locally only unless a later push is explicitly requested.
+- No tag or GitHub Release is created by this handoff.
+- The unpacked Windows package is prepared at `F:\ProteoPostZ_v2.0.2_windows_x86_release`; the user will compress or publish it separately.

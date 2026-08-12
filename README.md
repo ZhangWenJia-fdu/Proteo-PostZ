@@ -2,9 +2,17 @@
 
 **ProteoPostZ** is a Windows/R/Shiny application for post-processing protein-level proteomics results from **DIA**, **DDA**, and user-prepared standard quantitative matrices.
 
-ProteoPostZ was formerly named **ProteoDIAPostZ**. The name was changed in V2.0 when the supported input scope was expanded beyond DIA workflows.
+Current source version: **ProteoPostZ Formal V2.0.2**.
 
-**Latest release: ProteoPostZ Formal V2.0.1**
+## V2.0.2 Update Note
+
+- PEAKS now accepts one protein result file and detects DB versus LFQ schema from column structure rather than the filename.
+- PEAKS DB uses `Area <sample>` and sample-specific `Coverage(%) <sample>`; PEAKS LFQ uses `<sample> Area` and excludes `Group N Area`, ratio/profile, significance, and other non-sample fields.
+- If DB and LFQ-style fields are mixed, the DB schema takes precedence and the input is loaded as `PEAKS DB protein result`.
+- PEAKS LFQ keeps `Quantified_Protein_Count` from non-missing LFQ Area values but reports sample-level `Identified_Protein_Count` as unavailable because LFQ exports do not contain sample-specific identification evidence.
+- PEAKS DB and LFQ both retain one representative row per `Protein Group`: the first `Top == TRUE` row in source order, or the first group row when no Top row exists. No within-group Area aggregation is performed.
+
+## V2.0.1 Compatibility Note
 
 [Download the latest Windows release](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/latest)
 
@@ -246,7 +254,16 @@ ProteoPostZ can generate run-level traceability files in the selected output dir
 
 These files are generated analysis outputs and are intentionally excluded from the source repository.
 
----
+- portable R runtime
+- `portable/Rlibs`
+- `outputs`
+- `logs`
+- ZIP archives
+- compiled `.exe` launchers
+- analysis-generated PDF, CSV, TSV, manifest, or HTML output files
+- local temporary configuration files that may contain machine-specific absolute paths
+
+The complete Windows portable package, including portable R/Rlibs and `ProteoPostZ_v2.0.2.exe`, is distributed separately from the source repository.
 
 ## Run From Source
 
@@ -267,8 +284,8 @@ http://127.0.0.1:3840/
 The current Windows source launcher files are:
 
 ```text
-ProteoPostZ_v2.0.1_launcher.cs
-Run_ProteoPostZ_v2.0.1.cmd
+ProteoPostZ_v2.0.2_launcher.cs
+Run_ProteoPostZ_v2.0.2.cmd
 ```
 
 The compiled `.exe` launcher and complete portable R environment are distributed with the GitHub Release package rather than committed to the source repository.
@@ -282,10 +299,11 @@ app/                         Shiny application and R analysis code
 app/R/analysis_core.R        Core input parsing, plotting, statistics, ML, and helper functions
 app/annotations/             Built-in lightweight annotation tables
 tools/                       Regression and smoke-test scripts
-docs/                        Development documentation and archived files
-README.md                    Current software overview
-RELEASE_NOTES_v2.0.0.md      V2.0.0 release notes
-RELEASE_NOTES_v2.0.1.md      V2.0.1 release notes
+docs/                        Development notes and historical archived launchers
+README.md                    Current V2.0.2 source overview
+RELEASE_NOTES_v2.0.0.md      V2.0 release notes
+RELEASE_NOTES_v2.0.1.md      V2.0.1 patch release notes
+RELEASE_NOTES_v2.0.2.md      V2.0.2 PEAKS input release notes
 ```
 
 Historical documentation retains the **ProteoDIAPostZ** name where that name was used in the corresponding software version.
