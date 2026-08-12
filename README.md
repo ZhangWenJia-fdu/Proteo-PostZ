@@ -1,93 +1,258 @@
 # ProteoPostZ
 
-ProteoPostZ, formerly named ProteoDIAPostZ, is a Windows/R/Shiny desktop-style application for post-processing protein-level DIA and DDA proteomics results and user-prepared standard quantitative matrices.
+**ProteoPostZ** is a Windows/R/Shiny application for post-processing protein-level proteomics results from **DIA**, **DDA**, and user-prepared standard quantitative matrices.
 
-Current source version: **ProteoPostZ Formal V2.0.1**.
+ProteoPostZ was formerly named **ProteoDIAPostZ**. The name was changed in V2.0 when the supported input scope was expanded beyond DIA workflows.
 
-## V2.0.1 Update Note
+**Latest release: ProteoPostZ Formal V2.0.1**
 
-- Added `Quantified_Protein_Count` alongside the existing `Identified_Protein_Count`.
-- Sample count tables retain both count fields, and the sample count barplot supports switching between identification count and quantified protein count.
-- FragPipe/MSFragger and PEAKS now keep identification counts separate from quantitative non-missing counts by using their existing sample-level identification evidence.
-- MaxQuant still lacks an independent sample-level identification evidence field in the current `proteinGroups.txt` importer, so identification count is currently approximated by non-missing `LFQ intensity`.
-- Expression and Feature-protein heatmaps support independent row and column `Hierarchical`, `K-means`, and `None` choices. Row/column `k` settings appear only for the corresponding K-means choice; `None` preserves the input order.
-- The input Sample count preview retains its existing table controls and sample-count display behavior.
-- This is a patch release of Formal V2.0; the main input formats and downstream analysis framework are unchanged.
+[Download the latest Windows release](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/latest)
 
-## Why The Name Changed
+> For normal use, download the complete Windows portable package from the **Assets** section of the GitHub Release.
+> Do not use GitHub's automatically generated **Source code (zip)** or **Source code (tar.gz)** archives as the runnable application package.
 
-ProteoDIAPostZ V1.4 focused on DIA protein-level post-processing. V2.0 expands the input scope to DIA, DDA, and standard quantitative matrices, so the product name is shortened to **ProteoPostZ** while preserving the original version lineage.
+---
 
 ## Supported Inputs
 
-ProteoPostZ V2.0 uses a separated input recognition layer and converts all accepted formats into a shared internal protein quantitative matrix. The recommended and default row identifier is **accession**, because physicochemical mapping and annotation are accession-based and some FASTA/database choices do not provide a unique gene name for every accession.
+ProteoPostZ converts supported protein-level results into a shared internal quantitative matrix for downstream analysis.
 
-DIA protein-level inputs:
+### DIA protein-level inputs
 
-- DIA-NN `pg_matrix` tables, including sample columns from `.d`, `.raw`, `.wiff`, and direct sample-name columns when suffixes are absent.
-- Spectronaut report tables. `PG.Quantity` is used for quantitative analyses, and `PG.IBAQ` is used as identification evidence for qualitative summaries.
+* **DIA-NN** `pg_matrix` tables
+* **Spectronaut** protein-level report tables
 
-DDA protein-level inputs:
+For Spectronaut input, `PG.Quantity` is used for quantitative analyses, while `PG.IBAQ` can provide identification evidence for qualitative summaries.
 
-- FragPipe/MSFragger `combined_protein.tsv`; MaxLFQ intensity columns are used as label-free quantitative values.
-- PEAKS Online protein result tables; top proteins are selected within each protein group, Area columns are used for quantitative values, and sample-specific Coverage columns are used as identification evidence.
-- MaxQuant `proteinGroups.txt`; `LFQ intensity` columns are used as label-free quantitative values, and the first accession before a semicolon in `Protein IDs` is used by default.
+### DDA protein-level inputs
 
-Standard quantitative matrices:
+* **FragPipe/MSFragger** `combined_protein.tsv`
 
-- First column is the feature/protein identifier, remaining columns are sample quantitative values.
-- Two explicit zero-value modes are available: `0 is a valid quantitative value` and `0 represents missing or unquantified`.
-- Missing values represented as `NA`, `NaN`, blank cells, or empty strings are handled as missing.
+  * MaxLFQ Intensity is used for label-free quantification.
+* **PEAKS Online** protein result tables
 
-After loading, users can still rename samples and assign groups manually. Identical group text means the same biological group.
+  * Area is used for quantitative analysis.
+  * Sample-specific Coverage is used as identification evidence.
+* **MaxQuant** `proteinGroups.txt`
 
-## Main Analysis Modules
+  * LFQ intensity is used for label-free quantification.
 
-Qualitative and quantitative plots preserve the V1.x workflow with vector PDF output and per-plot CSV export. V2.0 also keeps feature UMAP/heatmap and Slingshot pseudotime support.
+### Standard quantitative matrices
 
-Dimension reduction:
+User-prepared `.csv` or `.tsv` quantitative matrices are also supported.
 
-- PCA
-- UMAP
-- t-SNE
+* The first column contains the feature/protein identifier.
+* Remaining columns contain sample quantitative values.
+* Two explicit zero-value modes are available:
 
-Machine learning:
+  * `0 is a valid quantitative value`
+  * `0 represents missing or unquantified`
+* `NA`, `NaN`, blank cells, and empty strings are treated as missing values.
 
-- Random forest
-- L1-regularized model
-- RF + L1 combined feature selection
+After data loading, users can rename samples and assign biological groups manually.
 
-V2.0 adds more model evaluation outputs where applicable, including cross-validation details, confusion matrices, class metrics, ROC/AUC for binary comparisons, sensitivity, specificity, and stability-selection summaries. For small sample sizes, these outputs should be interpreted as exploratory evidence rather than independent clinical or biological validation.
+The recommended and default protein identifier is **accession**, because physicochemical-property mapping and built-in annotations are accession-based.
+
+---
+
+## Main Analysis Features
+
+### Protein identification and quantification summaries
+
+* Identified protein counts
+* Quantified protein counts
+* Sample protein-count barplots
+* Venn diagrams
+* UpSet plots
+
+### Protein physicochemical and quantitative characteristics
+
+* Physicochemical-property analysis
+* Rank-abundance plots
+* Correlation analysis
+* CV distribution/ridgeline plots
+
+### Dimension reduction
+
+* PCA
+* UMAP
+* t-SNE
+
+### Differential and expression analysis
+
+* Volcano plots
+* Expression heatmaps
+
+### Machine learning and feature selection
+
+* Random forest
+* L1-regularized feature selection
+* RF + L1 combined feature selection
+* Feature-protein UMAP
+* Feature-protein heatmaps
+
+Where applicable, model evaluation outputs include:
+
+* cross-validation details
+* confusion matrices
+* class metrics
+* ROC/AUC for binary comparisons
+* sensitivity
+* specificity
+* stability-selection summaries
+
+For small sample sizes, machine-learning results should be interpreted as exploratory evidence rather than independent biological or clinical validation.
+
+### Pseudotime analysis
+
+* Slingshot pseudotime analysis
+
+### Export
+
+Analysis modules support:
+
+* vector PDF figure export
+* CSV result export
+* run-level analysis traceability outputs
+
+---
+
+## What's New in V2.0.1
+
+ProteoPostZ Formal V2.0.1 is a maintenance update to V2.0.0. The major supported input formats and downstream analysis framework remain unchanged.
+
+Main changes include:
+
+* Added `Quantified_Protein_Count` while retaining `Identified_Protein_Count`.
+* Sample protein-count plots can switch between identified and quantified protein counts.
+* FragPipe/MSFragger and PEAKS now distinguish sample-level identification evidence from available quantitative values.
+* Expression and Feature-protein heatmaps now support independent row and column clustering.
+* Row and column clustering can independently use `Hierarchical`, `K-means`, or `None`.
+* Separate K-means `k` settings are available for rows and columns where applicable.
+
+---
+
+## Identification and Quantification Count Definitions
+
+Where independent sample-level identification evidence is available, ProteoPostZ distinguishes **identified proteins** from **quantified proteins**.
+
+### FragPipe/MSFragger
+
+For `combined_protein.tsv`:
+
+* **Identified protein count:** sample-specific `Spectral Count > 0`
+* **Quantified protein count:** non-missing `MaxLFQ Intensity`
+
+Zero MaxLFQ values are treated as missing quantitative values.
+
+### PEAKS
+
+For PEAKS protein-level input:
+
+* **Identified protein count:** sample-specific `Coverage > 0`
+* **Quantified protein count:** non-missing `Area`
+
+Zero Area values are treated as missing quantitative values.
+
+### MaxQuant
+
+The current `proteinGroups.txt` importer does not contain an independent sample-level identification-evidence field.
+
+Therefore:
+
+* quantitative values are based on `LFQ intensity`;
+* identification count is currently approximated using non-missing `LFQ intensity`.
+
+Accordingly, identified and quantified counts currently coincide for MaxQuant input.
+
+### Standard quantitative matrices
+
+A user-prepared standard quantitative matrix does not necessarily contain independent protein-identification evidence.
+
+ProteoPostZ therefore reports the number of available quantitative values according to the selected zero-handling mode rather than creating an artificial strict identification count.
+
+---
+
+## Heatmap Clustering
+
+Expression heatmaps and Feature-protein heatmaps allow row and column clustering to be configured independently.
+
+Available choices are:
+
+* `Hierarchical`
+* `K-means`
+* `None`
+
+When `K-means` is selected:
+
+* the row `k` value can be configured independently;
+* the column `k` value can be configured independently;
+* the corresponding `k` control is displayed only when K-means is selected for that direction.
+
+Selecting `None` preserves the corresponding input order.
+
+---
+
+## Windows Portable Release
+
+The recommended way to run ProteoPostZ on Windows is to download the complete portable package from:
+
+[GitHub Releases](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases)
+
+For Formal V2.0.1, download:
+
+`ProteoPostZ_v2.0.1_windows_x86_release.zip`
+
+Do **not** download GitHub's automatically generated **Source code (zip)** or **Source code (tar.gz)** archives if you want the runnable Windows application. These archives contain the source repository only and do not include the complete portable R runtime and packaged R libraries.
+
+### Running the portable version
+
+After downloading:
+
+1. Extract the ZIP archive completely.
+2. Double-click `ProteoPostZ_v2.0.1.exe`.
+3. If the executable launcher cannot be used, run `Run_ProteoPostZ_v2.0.1.cmd`.
+4. ProteoPostZ will open locally at:
+
+`http://127.0.0.1:3840/`
+
+The browser interface runs only on the current computer and is not an online web service.
+
+Normal use of the complete portable package does not require an internet connection.
+
+
+---
 
 ## Traceability Outputs
 
-Each analysis module can write module outputs to the selected output directory. V2.0 adds run traceability files:
+ProteoPostZ can generate run-level traceability files in the selected output directory:
 
-- `analysis_manifest.json`: input file, detected category/format, grouping, filtering, normalization, missing-value handling, method settings, app version, and output file list where available.
-- `analysis_summary.html`: a lightweight browser-readable summary of the same analysis run.
+* `analysis_manifest.json`
+* `analysis_summary.html`
 
-These files are generated outputs and are intentionally excluded from the source repository.
+`analysis_manifest.json` can record information including:
 
-## Repository And Release Asset Boundary
+* input file
+* detected input category and format
+* sample grouping
+* filtering
+* normalization
+* missing-value handling
+* analysis settings
+* application version
+* generated output files where available
 
-This Git repository contains source code, scripts, documentation, tests, and lightweight built-in annotation CSV files required by the application source.
+`analysis_summary.html` provides a lightweight browser-readable summary of the analysis run.
 
-The source repository does **not** commit:
+These files are generated analysis outputs and are intentionally excluded from the source repository.
 
-- portable R runtime
-- `portable/Rlibs`
-- `outputs`
-- `logs`
-- ZIP archives
-- compiled `.exe` launchers
-- analysis-generated PDF, CSV, TSV, manifest, or HTML output files
-- local temporary configuration files that may contain machine-specific absolute paths
-
-The complete Windows portable package, including portable R/Rlibs and `ProteoPostZ_v2.0.1.exe`, is distributed separately as a GitHub Release asset.
+---
 
 ## Run From Source
 
-Install R and the required R packages, or use the separate Windows portable package for a self-contained runtime. From the repository root:
+Users who wish to run ProteoPostZ directly from source can install R and the required R packages.
+
+From the repository root:
 
 ```bat
 Rscript run_app.R
@@ -99,46 +264,61 @@ Then open:
 http://127.0.0.1:3840/
 ```
 
-The current Windows source launcher is:
+The current Windows source launcher files are:
 
 ```text
 ProteoPostZ_v2.0.1_launcher.cs
 Run_ProteoPostZ_v2.0.1.cmd
 ```
 
-The compiled launcher executable is not committed to this repository.
+The compiled `.exe` launcher and complete portable R environment are distributed with the GitHub Release package rather than committed to the source repository.
+
+---
 
 ## Repository Layout
 
 ```text
 app/                         Shiny application and R analysis code
-app/R/analysis_core.R         Core input parsers, plotting, statistics, ML, and helper functions
-app/annotations/              Lightweight offline annotation CSV files
+app/R/analysis_core.R        Core input parsing, plotting, statistics, ML, and helper functions
+app/annotations/             Built-in lightweight annotation tables
 tools/                       Regression and smoke-test scripts
-docs/                        Development notes and historical archived launchers
-README.md                    Current V2.0.1 source overview
-RELEASE_NOTES_v2.0.0.md      V2.0 release notes
-RELEASE_NOTES_v2.0.1.md      V2.0.1 patch release notes
+docs/                        Development documentation and archived files
+README.md                    Current software overview
+RELEASE_NOTES_v2.0.0.md      V2.0.0 release notes
+RELEASE_NOTES_v2.0.1.md      V2.0.1 release notes
 ```
 
-Historical V1.4 launcher files are archived under `docs/archive/v1.4/`; historical release notes retain the old ProteoDIAPostZ name where that is factually correct.
+Historical documentation retains the **ProteoDIAPostZ** name where that name was used in the corresponding software version.
 
-Regression scripts that exercise external DIA-NN or Spectronaut files read their paths from `PROTEOPOSTZ_DIANN_TEST_FILE` and `PROTEOPOSTZ_SPECTRONAUT_TEST_FILE`. These local environment variables are intentionally not committed with the source.
+---
 
-## V2.0 Test Scope
+## 中文简介
 
-The V2.0 source checks cover:
+**ProteoPostZ Formal V2.0.1** 是一个基于 R/Shiny 的蛋白质组学蛋白水平结果后处理软件。
 
-- R syntax parsing for `app/app.R` and `app/R/analysis_core.R`
-- DIA-NN and Spectronaut protein-level input regression
-- FragPipe/MSFragger, PEAKS, and MaxQuant protein-level DDA input smoke tests
-- standard matrix zero-as-value and zero-as-missing modes
-- PCA, UMAP, and t-SNE smoke tests
-- random forest, L1, and RF + L1 machine-learning smoke tests
-- manifest and HTML summary generation-path checks
-- Slingshot compatibility smoke tests when local dependencies are available
-- static inspection of the Windows launcher and CMD startup scripts
+软件原名 **ProteoDIAPostZ**。自 V2.0 起，输入范围由 DIA 扩展至 **DIA、DDA 以及用户整理的标准定量矩阵**，因此软件正式更名为 **ProteoPostZ**。
 
-## 中文简要说明
+目前支持的主要输入包括：
 
-ProteoPostZ Formal V2.0.1 是 ProteoDIAPostZ V1.4 的后续版本。由于软件范围已经从 DIA 扩展到 DIA、DDA 以及用户整理的标准定量矩阵，软件名称去掉了 DIA。当前版本仍以蛋白水平结果为核心，推荐默认使用 accession 作为行标识，保留 PDF 矢量图和 CSV 导出，并新增 DDA 蛋白定量表输入、t-SNE、机器学习评估细节、`analysis_manifest.json` 和 `analysis_summary.html`。
+* DIA-NN
+* Spectronaut
+* FragPipe/MSFragger
+* PEAKS
+* MaxQuant
+* 用户整理的 CSV/TSV 标准定量矩阵
+
+主要分析功能包括：
+
+* 蛋白鉴定和定量数量统计
+* Venn 和 UpSet 分析
+* 蛋白理化性质分析
+* 相关性分析
+* PCA、UMAP 和 t-SNE
+* 差异分析和表达 heatmap
+* Random forest
+* L1 特征筛选
+* RF + L1 联合特征筛选
+* Feature-protein UMAP 和 heatmap
+* Slingshot 拟时序分析
+
+V2.0.1 进一步区分了样本水平的**鉴定蛋白数**与**定量蛋白数**，并完善了 Expression heatmap 和 Feature-protein heatmap 的行、列独立聚类设置。
