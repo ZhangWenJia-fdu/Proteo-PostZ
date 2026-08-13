@@ -53,7 +53,7 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 - Current source version and visible app title are `ProteoPostZ Formal V2.0.2`.
 - PEAKS DB, PEAKS LFQ, and mixed DB/LFQ schema precedence checks passed using local development inputs supplied outside the repository.
 - PEAKS LFQ preview/export/barplot handling passed with unavailable identification counts and valid quantified counts.
-- The unpacked package at `F:\ProteoPostZ_v2.0.2_windows_x86_release` contains 34,775 files and was verified at approximately 1.24 GB before user-side compression.
+- The unpacked Windows package was checked for a complete portable runtime before user-side compression.
 - The refreshed unpacked package was independently cold-started from its own portable R runtime and passed HTTP 200 / Formal V2.0.2 page verification. Its bilingual user guides were synchronized with the current source; the final package audit found no generated outputs, logs, test records, or Git metadata.
 - Package launch from a stopped state returned HTTP 200 at `http://127.0.0.1:3840/` and exposed Formal V2.0.2.
 - The package audit found no application `logs`, `outputs`, `Rplots.pdf`, analysis manifests/summaries, test directories, or local test records.
@@ -72,6 +72,6 @@ Known non-blocking local warnings during tests: Shiny package build-version warn
 
 ## Publication Boundary
 
-- The V2.0.2 source commit is recorded locally only unless a later push is explicitly requested.
-- No tag or GitHub Release is created by this handoff.
-- The unpacked Windows package is prepared at `F:\ProteoPostZ_v2.0.2_windows_x86_release`; the user will compress or publish it separately.
+- The V2.0.2 source publication is limited to tracked source and public documentation.
+- The existing V2.0.2 Release and its assets are managed separately from this source handoff.
+- Portable runtime files, archives, generated outputs, local configuration, and local paths are not tracked by the repository.
