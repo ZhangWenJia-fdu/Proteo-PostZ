@@ -6,6 +6,8 @@ Current development version: ProteoPostZ Formal V2.0.2.
 
 V2.0.2 is a source and portable-runtime update focused on PEAKS Online protein-result input and targeted quantitative-plot usability refinements. The release package is prepared separately from the source repository and excludes local test data, generated outputs, logs, and test records.
 
+The bilingual V2.0.2 user guides identify the two user-facing additions: schema-detected PEAKS LFQ protein-result input while retaining PEAKS DB compatibility, and refined Sample correlation / Expression / Feature-protein heatmap settings. They also provide balanced qualitative and quantitative analysis overviews, a concise statement that module settings are adjustable, and PDF/CSV export guidance.
+
 ## V2.0.1 Count Definitions
 
 V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_Protein_Count` field for compatibility.
@@ -52,6 +54,7 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 - PEAKS DB, PEAKS LFQ, and mixed DB/LFQ schema precedence checks passed using local development inputs supplied outside the repository.
 - PEAKS LFQ preview/export/barplot handling passed with unavailable identification counts and valid quantified counts.
 - The unpacked package at `F:\ProteoPostZ_v2.0.2_windows_x86_release` contains 34,775 files and was verified at approximately 1.24 GB before user-side compression.
+- The refreshed unpacked package was independently cold-started from its own portable R runtime and passed HTTP 200 / Formal V2.0.2 page verification. Its bilingual user guides were synchronized with the current source; the final package audit found no generated outputs, logs, test records, or Git metadata.
 - Package launch from a stopped state returned HTTP 200 at `http://127.0.0.1:3840/` and exposed Formal V2.0.2.
 - The package audit found no application `logs`, `outputs`, `Rplots.pdf`, analysis manifests/summaries, test directories, or local test records.
 
