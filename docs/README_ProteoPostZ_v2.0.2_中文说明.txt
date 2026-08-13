@@ -16,9 +16,13 @@ exe 是启动本地 R/Shiny 应用的启动器，不是在线网站。软件使�
 PEAKS 用户只需上传一个 protein 文件。软件根据内部列结构自动识别 DB 或 LFQ，不根据文件名判断。DB 使用 Area <sample> 和 sample-specific Coverage(%)；LFQ 使用 <sample> Area，并排除 Group N Area、Ratio/Profile 等非样品定量字段。如果 DB 与 LFQ 字段混合，优先按 DB 读取。LFQ 没有样品级独立鉴定证据，因此 Identified_Protein_Count 不可用；Quantified_Protein_Count 仍然正常生成。
 
 三、主要功能
-样品计数、Venn/UpSet、理化性质、相关性热图、丰度排序、CV、PCA、UMAP、t-SNE、火山图、表达热图、RF、L1、RF + L1、特征蛋白 UMAP/热图和 Slingshot 伪时间分析。
+定性分析包括样品蛋白计数、基于组水平集合的 Venn/UpSet 和理化性质分析。定量分析包括相关性热图、丰度排序、组内 CV、PCA、UMAP、t-SNE、火山图、表达热图、随机森林特征选择、L1 特征选择、RF + L1 联合特征选择、特征蛋白 UMAP/热图和 Slingshot 伪时间分析。
 
-软件支持 PDF 矢量图输出和各模块 CSV 导出。
+相关性热图可选择 Pearson 或 Spearman，并可选择保留 Original 导入顺序、按 Group 显示，或使用全局层次聚类。层次聚类可选择 1 - correlation 或基于相关性 profile 的 Euclidean distance、complete 或 average linkage，并通过 k 切分树状图并显示簇间间隔。
+
+Expression heatmap 和 Feature-protein heatmap 的蛋白行与样品列可分别选择 Hierarchical、K-means 或 None。行聚类 k 默认值为 1，样品列聚类 k 默认值为当前设置的 Group 数。两个热图均支持 Blue-White-Red、Red-White-Blue、Purple-White-Orange、Green-Black-Red 四种表达色阶；原始 Group 与样品聚类簇可分别选择预设色板或输入自定义 #RRGGBB 色号；行标签可选择 Accession、Protein name、Gene name 或不显示。热图默认 PDF 尺寸为 600 x 800 pt。
+
+软件支持 PDF 矢量图输出和各模块 CSV 导出。分析卡片可全屏放大；定量分析页面采用固定视口，模块内的控制区和结果区可独立滚动。
 
 四、离线使用
 正常使用不需要网络。只有在用户明确更新注释或安装缺失 R 包时才需要网络。

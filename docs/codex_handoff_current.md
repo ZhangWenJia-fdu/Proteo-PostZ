@@ -4,7 +4,7 @@ Current development version: ProteoPostZ Formal V2.0.2.
 
 ## V2.0.2 Release Scope
 
-V2.0.2 is a source and portable-runtime update focused on PEAKS Online protein-result input. No unrelated analysis algorithm or input-format semantics were changed. The release package is prepared separately from the source repository and excludes local test data, generated outputs, logs, and test records.
+V2.0.2 is a source and portable-runtime update focused on PEAKS Online protein-result input and targeted quantitative-plot usability refinements. The release package is prepared separately from the source repository and excludes local test data, generated outputs, logs, and test records.
 
 ## V2.0.1 Count Definitions
 
@@ -26,7 +26,7 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 
 - FragPipe/MSFragger: identification uses sample `Spectral Count > 0`; quantification uses non-missing `MaxLFQ Intensity` after zero-to-`NA` handling.
 - PEAKS: identification uses sample-specific `Coverage(%) sample` values greater than zero; quantification uses non-missing sample `Area` after zero-to-`NA` handling. Protein Group reduction is unchanged: first `Top = TRUE` row wins, and if multiple rows are top entries the earliest source-table row is retained.
-- MaxQuant: the current `proteinGroups.txt` importer has no independent sample-level identification evidence. `Identified_Protein_Count` is therefore approximated by non-missing `LFQ intensity`, and currently matches `Quantified_Protein_Count`.
+- MaxQuant: the protein-level importer has no independent sample-level identification evidence. `Identified_Protein_Count` is therefore approximated by non-missing `LFQ intensity`, and currently matches `Quantified_Protein_Count`.
 - DIA-NN: counts are computed from the existing DIA-NN qualitative and quantitative matrices. In the current importer both matrices use the same sample quantity evidence.
 - Spectronaut: identification counts use the existing `PG.IBAQ` evidence matrix, while quantified counts use non-missing `PG.Quantity`.
 - Standard quantitative matrix: counts represent available quantitative values under the selected zero-handling mode. The app does not fabricate an independent strict identification count for standard matrices.
@@ -39,7 +39,12 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 - Standard matrix barplot selection exposes quantified count only.
 - MaxQuant displays the approximation note in English where relevant.
 - Count-related CSV exports retain both count fields; generated plot titles and axis labels follow the selected count type.
-- Expression and Feature-protein heatmaps independently support row and column `Hierarchical`, `K-means`, and `None` choices. The corresponding row/column K-means `k` control is shown only when that direction uses K-means; `None` preserves input order.
+- Venn and UpSet each show their group-level set-definition note directly above the minimum-replicate control.
+- Quantitative plots are arranged across five fixed-viewport pages. Analysis cards retain full-screen expansion and independently scrollable controls/results.
+- Sample correlation heatmap supports `Original` order (default), `By group`, and global `Hierarchical clustering`. Hierarchical clustering supports `1 - correlation` or Euclidean distance of correlation profiles, `complete` or `average` linkage, and a cut-tree `k` with visible cluster gaps. The selected Pearson or Spearman method is the correlation basis for clustering.
+- Expression and Feature-protein heatmaps independently support row and column `Hierarchical`, `K-means`, and `None` choices. Row hierarchical/K-means `k` defaults to 1; column hierarchical/K-means `k` defaults to the configured Group count. K-means and cut-tree hierarchical clusters have visible gaps.
+- Both heatmaps support Blue-White-Red, Red-White-Blue, Purple-White-Orange, and Green-Black-Red expression color schemes; independent Group and sample-cluster annotation palettes; and custom per-label `#RRGGBB` colors. Sample-cluster annotation applies to column clustering.
+- Both heatmaps support optional row labels from Accession, Protein name, or Gene name, with `None` as the default. Label font size adapts to PDF height and displayed row count. Default heatmap PDF size is 600 x 800 pt.
 
 ## Validation Completed
 
@@ -56,6 +61,8 @@ V2.0.1 adds `Quantified_Protein_Count` while retaining the existing `Identified_
 - DIA-NN and Spectronaut regression inputs are supplied through `PROTEOPOSTZ_DIANN_TEST_FILE` and `PROTEOPOSTZ_SPECTRONAUT_TEST_FILE`; local file paths are not stored in the repository.
 - Expression heatmap row/column combinations: 9/9 passed, with PDF and CSV outputs generated for every combination.
 - Feature-protein heatmap row/column combinations: 9/9 passed, with PDF and CSV outputs generated for every combination.
+- Current V2.0.2 correlation and heatmap refinements passed on locally supplied real importer inputs and a temporary multi-group simulated matrix. Coverage included all supported importer families, PEAKS DB/LFQ detection, all correlation order modes, both clustering distances/linkages, heatmap clustering modes, color schemes, custom annotations, and row-label modes. No local input paths, source data, fixtures, or derived data were added to the repository.
+- Correlation long-format export now safely handles a legitimate sample label that matches its former internal `Sample1` temporary-column name.
 - Source app startup on `http://127.0.0.1:3840/`: HTTP 200 verified.
 
 Known non-blocking local warnings during tests: Shiny package build-version warning, systemfonts/textshaping Freetype warning, and an existing bslib `layout_columns` breakpoint warning. These are environment or existing UI warnings and were not introduced by the V2.0.2 PEAKS input logic.
