@@ -134,7 +134,6 @@ app/                         Shiny application and R analysis code
 app/R/analysis_core.R         Input parsers, plotting, statistics, ML, and helpers
 app/annotations/              Lightweight offline annotation tables
 tools/                        Regression and smoke-test scripts
-docs/                         Development notes and archived historical launchers
 README.md                     Current V2.0.2 overview
 RELEASE_NOTES_v2.0.0.md      V2.0 release notes
 RELEASE_NOTES_v2.0.1.md      V2.0.1 release notes
