@@ -6,11 +6,7 @@ ProteoPostZ, formerly ProteoDIAPostZ, is a Windows/R Shiny application for post-
 
 ## Download the Windows portable application
 
-Download [`ProteoPostZ_v2.0.2_windows_x86_release.zip`](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.2) from the V2.0.2 Release Assets. Its SHA256 is:
-
-```text
-61667269F45B4238F88B6AF63598D18E3D6D4B357CABFA3AEA963D6616EDDDE1
-```
+Download [`ProteoPostZ_v2.0.2_windows_x86_release.zip`](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.2) from the V2.0.2 Release Assets. 
 
 The GitHub-generated **Source code (zip)** and **Source code (tar.gz)** downloads contain source only; they are not the complete Windows portable application. Windows users should download the portable ZIP from Release Assets.
 
@@ -33,19 +29,19 @@ ProteoPostZ converts accepted files into a shared internal protein quantitative 
 
 ### DDA protein-level results
 
-- **FragPipe/MSFragger** protein-level results: MaxLFQ intensity columns are used as label-free quantitative values.
+- **FragPipe/MSFragger** protein-level results: `MaxLFQ intensity` columns are used as label-free quantitative values.
+- **PEAKS** protein-level results: `Area` is used for quantitative analysis. Sample-specific `Coverage` is used as identification evidence.
 - **MaxQuant** protein-level results: `LFQ intensity` columns are used as label-free quantitative values; the first accession in `Protein IDs` is used by default.
 
-#### PEAKS DB protein result
+### Note: PEAKS DB/LFQ
+- **PEAKS** protein-level results remains one upload entry: **one PEAKS protein file is uploaded at a time**. The subtype is determined from the internal column schema, never from the filename.
 
-PEAKS remains one upload entry: **one PEAKS protein file is uploaded at a time**. The subtype is determined from the internal column schema, never from the filename.
-
+- **PEAKS DB protein result**
 - DB uses `Area <sample>` as the sample quantitative values.
 - Sample-specific `Coverage(%) <sample> > 0` supplies independent sample-level identification evidence.
 - This preserves the V2.0.1 PEAKS DB workflow.
 
-#### PEAKS LFQ protein result
-
+- **PEAKS LFQ protein result**
 - LFQ uses `<sample> Area` as the PEAKS-reported protein-level LFQ abundance.
 - `Group N Area`, ratio/profile columns, significance, and other non-sample fields are excluded from the quantitative matrix.
 - ProteoPostZ does not recalculate Top3, MaxLFQ, or protein abundance.
@@ -115,28 +111,87 @@ Plot modules generate vector PDF output and can export the corresponding CSV dat
 
 Normal application use is offline. Internet access is only relevant when deliberately updating annotations or installing missing R packages.
 
-## Run from source
+---
 
-Install R and the required packages, then run from the repository root:
+## Release Notes
 
-```bat
-Rscript run_app.R
-```
+### ProteoPostZ Formal
 
-The local interface opens at `http://127.0.0.1:3840/`.
+* [ProteoPostZ Formal Release V2.0.2](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.2)
+* [ProteoPostZ Formal Release V2.0.1](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.1)
+* [ProteoPostZ Formal Release V2.0](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.0)
 
-The current source launcher files are `ProteoPostZ_v2.0.2_launcher.cs` and `Run_ProteoPostZ_v2.0.2.cmd`. Compiled launchers, portable runtimes, package libraries, archives, and analysis outputs are intentionally excluded from this repository.
+### ProteoDIAPostZ Formal
 
-## Repository layout
+* [ProteoDIAPostZ Formal Release V1.4](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v1.4.0)
+* [ProteoDIAPostZ Formal Release V1.3](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v1.3.0)
 
-```text
-app/                         Shiny application and R analysis code
-app/R/analysis_core.R         Input parsers, plotting, statistics, ML, and helpers
-app/annotations/              Lightweight offline annotation tables
-tools/                        Regression and smoke-test scripts
-README.md                     Current V2.0.2 overview
-RELEASE_NOTES_v2.0.0.md      V2.0 release notes
-RELEASE_NOTES_v2.0.1.md      V2.0.1 release notes
-RELEASE_NOTES_v2.0.2.md      V2.0.2 release notes
-RELEASE_NOTES_v1.4.0.md      V1.4 release notes
-```
+> **Version lineage:** ProteoPostZ is the continuation of ProteoDIAPostZ. The product was renamed beginning with V2.0 when support was expanded from DIA-focused workflows to DIA, DDA, and user-prepared standard quantitative matrices.
+
+---
+
+## 中文简要说明
+
+**ProteoPostZ Formal V2.0.2** 是一个基于 R/Shiny 的 Windows 蛋白质组学后处理软件，主要用于 **DIA、DDA 蛋白水平结果以及用户整理的标准定量矩阵**的后续统计分析与可视化。
+
+ProteoPostZ 原名 **ProteoDIAPostZ**。自 V2.0 起，软件的输入范围由 DIA 扩展至 DIA、DDA 和标准定量矩阵，因此正式更名为 ProteoPostZ，并延续原有版本体系。
+
+### 支持的输入
+
+目前主要支持：
+
+* **DIA-NN** 蛋白水平结果
+* **Spectronaut** 蛋白水平结果
+* **FragPipe/MSFragger** 蛋白水平结果
+* **PEAKS DB** protein result
+* **PEAKS LFQ** protein result
+* **MaxQuant** `proteinGroups.txt`
+* 用户整理的 CSV/TSV 标准定量矩阵
+
+对于 PEAKS，用户每次只需上传一个 protein result 文件。软件根据文件内部 column schema 自动识别 **PEAKS DB** 或 **PEAKS LFQ**，不依赖文件名判断。
+
+PEAKS DB 保留原有兼容模式，以 `Area <sample>` 作为样品定量值，并利用 sample-specific `Coverage(%)` 作为独立的样品水平鉴定证据。
+
+PEAKS LFQ 使用 `<sample> Area` 作为 PEAKS 输出的蛋白水平 LFQ 定量值，并自动排除 `Group N Area`、ratio/profile 等非样品定量字段。如果用户已经在 PEAKS 中完成 LFQ 分析，建议优先使用 LFQ protein result 进行后续定量分析。
+
+### 主要分析功能
+
+定性分析主要包括：
+
+* 样品蛋白鉴定数和定量数统计
+* Venn diagram
+* UpSet plot
+* 蛋白理化性质分析
+
+定量分析主要包括：
+
+* Pearson / Spearman 样品相关性热图
+* Rank-abundance plot
+* 组内 CV ridgeline
+* PCA
+* UMAP
+* t-SNE
+* Volcano plot
+* Expression heatmap
+* Random forest 特征筛选
+* L1 特征筛选
+* RF + L1 联合特征筛选
+* Feature-protein UMAP
+* Feature-protein heatmap
+* Slingshot pseudotime analysis
+
+V2.0.2 进一步优化了 **Sample correlation heatmap** 的样品排序和层次聚类设置，并扩展了 **Expression heatmap** 和 **Feature-protein heatmap** 的参数、颜色及输出布局选项。
+
+### 输出与离线使用
+
+各主要分析模块支持：
+
+* PDF 矢量图导出
+* 对应 CSV 数据导出
+* `analysis_manifest.json` 分析过程记录
+* `analysis_summary.html` 分析摘要
+
+完整 Windows portable package 已包含运行所需的 portable R、R packages 和内置 annotation tables，正常分析过程不需要互联网连接。
+
+---
+
