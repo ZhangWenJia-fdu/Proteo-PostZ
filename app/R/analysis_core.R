@@ -1601,52 +1601,122 @@ write_l1_evaluation <- function(x, y, training, l1_alpha, lambda_selection, nfol
   data.table::fwrite(data.frame(Sample = rownames(x), Fold = foldid, Actual = as.character(y), Predicted = pred, probs_all, check.names = FALSE), file.path(outdir, "l1_cross_validation_predictions.csv"))
 }
 
-write_rf_stability <- function(x, y, outdir, top_n = 50, rf_ntree = 500, mtry = NA_integer_, seed = 123, repeats = 20, sample_fraction = 0.8) {
+prepare_stability_input <- function(mat, group_info) {
+  used <- as.matrix(mat)
+  mode(used) <- "numeric"
+  used <- used[rowSums(!is.na(used)) > 0, , drop = FALSE]
+  used <- log2(used + 1)
+  keep_n <- max(1, ceiling(ncol(used) * 0.5))
+  used <- used[rowSums(!is.na(used)) >= keep_n, , drop = FALSE]
+  x <- t(used)
+  y <- factor(group_info$Group[match(rownames(x), group_info$Sample)])
+  keep_samples <- !is.na(y)
+  list(x = x[keep_samples, , drop = FALSE], y = droplevels(y[keep_samples]))
+}
+
+impute_from_training <- function(train_x, test_x) {
+  medians <- apply(train_x, 2, median, na.rm = TRUE)
+  medians[!is.finite(medians)] <- 0
+  for (j in seq_len(ncol(train_x))) {
+    train_x[is.na(train_x[, j]), j] <- medians[j]
+    test_x[is.na(test_x[, j]), j] <- medians[j]
+  }
+  list(train = train_x, test = test_x)
+}
+
+make_stability_split_plan <- function(y, repeats = 50, train_prop = 0.8, seed = 123) {
+  lapply(seq_len(repeats), function(i) {
+    stratified_train_test_split(y, train_prop = train_prop, seed = seed + i - 1, min_train_per_class = 2, min_test_per_class = 1)
+  })
+}
+
+write_rf_stability <- function(x, y, outdir, top_n = 50, rf_ntree = 500, mtry = NA_integer_, seed = 123, repeats = 50, sample_fraction = 0.8, top_var_n = 200, top20_weight = 0.35, top50_weight = 0.25, gini_weight = 0.10, split_plan = NULL) {
   selected <- list()
+  gini_values <- list()
+  performance <- vector("list", repeats)
+  split_plan <- split_plan %||% make_stability_split_plan(y, repeats, sample_fraction, seed + 1000)
   for (i in seq_len(repeats)) {
-    set.seed(seed + 1000 + i)
-    idx <- unlist(lapply(levels(y), function(cls) {
-      cls_idx <- which(y == cls)
-      sample(cls_idx, max(2, floor(length(cls_idx) * sample_fraction)), replace = FALSE)
-    }), use.names = FALSE)
-    args <- list(x = x[idx, , drop = FALSE], y = droplevels(y[idx]), ntree = rf_ntree, importance = TRUE)
+    split <- split_plan[[i]]
+    train_x <- x[split$train, , drop = FALSE]
+    train_y <- droplevels(y[split$train])
+    test_x <- x[split$test, , drop = FALSE]
+    test_y <- droplevels(y[split$test])
+    train_var <- apply(train_x, 2, var, na.rm = TRUE)
+    train_var[!is.finite(train_var)] <- -Inf
+    keep <- order(train_var, decreasing = TRUE)[seq_len(min(top_var_n, ncol(train_x)))]
+    imputed <- impute_from_training(train_x[, keep, drop = FALSE], test_x[, keep, drop = FALSE])
+    args <- list(x = train_x[, keep, drop = FALSE], y = train_y, ntree = rf_ntree, importance = TRUE)
+    args$x <- imputed$train
     if (!is.na(mtry)) args$mtry <- mtry
     fit <- do.call(randomForest::randomForest, args)
+    pred <- predict(fit, imputed$test)
+    recalls <- diag(table(factor(test_y, levels = levels(train_y)), factor(pred, levels = levels(train_y)))) / rowSums(table(factor(test_y, levels = levels(train_y)), factor(pred, levels = levels(train_y))))
+    performance[[i]] <- data.frame(Resample = i, TrainSamples = length(split$train), TestSamples = length(split$test), Accuracy = mean(pred == test_y), BalancedAccuracy = mean(recalls, na.rm = TRUE), stringsAsFactors = FALSE)
     imp <- randomForest::importance(fit)
     col <- if ("MeanDecreaseGini" %in% colnames(imp)) "MeanDecreaseGini" else tail(colnames(imp), 1)
     selected[[i]] <- rownames(imp)[order(imp[, col], decreasing = TRUE)][seq_len(min(top_n, nrow(imp)))]
+    gini_values[[i]] <- setNames(as.numeric(imp[, col]), rownames(imp))
   }
-  freq <- sort(table(unlist(selected, use.names = FALSE)) / repeats, decreasing = TRUE)
-  out <- data.frame(ProteinID = names(freq), SelectionFrequency = as.numeric(freq), Repeats = repeats, stringsAsFactors = FALSE)
+  all_ids <- unique(unlist(selected, use.names = FALSE))
+  top20_freq <- sort(table(unlist(lapply(selected, head, 20), use.names = FALSE)) / repeats, decreasing = TRUE)
+  top50_freq <- sort(table(unlist(lapply(selected, head, 50), use.names = FALSE)) / repeats, decreasing = TRUE)
+  mean_gini <- vapply(all_ids, function(id) sum(vapply(gini_values, function(v) unname(v[id] %||% 0), numeric(1))) / repeats, numeric(1))
+  gini_range <- range(mean_gini, finite = TRUE)
+  gini_scaled <- if (length(gini_range) < 2 || diff(gini_range) == 0) rep(0, length(mean_gini)) else (mean_gini - gini_range[1]) / diff(gini_range)
+  score <- top20_weight * as.numeric(top20_freq[all_ids]) + top50_weight * as.numeric(top50_freq[all_ids]) + gini_weight * gini_scaled
+  score[is.na(score)] <- 0
+  ord <- order(score, as.numeric(top20_freq[all_ids]), as.numeric(top50_freq[all_ids]), mean_gini, decreasing = TRUE, na.last = TRUE)
+  out <- data.frame(ProteinID = all_ids[ord], SelectionFrequency = as.numeric(top50_freq[all_ids][ord]), RFTop20Frequency = as.numeric(top20_freq[all_ids][ord]), RFTop50Frequency = as.numeric(top50_freq[all_ids][ord]), MeanDecreaseGini = mean_gini[ord], MeanDecreaseGiniScaled = gini_scaled[ord], StabilityScore = score[ord], Repeats = repeats, stringsAsFactors = FALSE)
   data.table::fwrite(out, file.path(outdir, "random_forest_stability_selection.csv"))
+  data.table::fwrite(dplyr::bind_rows(performance), file.path(outdir, "random_forest_stability_resample_performance.csv"))
   invisible(out)
 }
 
-write_l1_stability <- function(x, y, outdir, top_n = 50, l1_alpha = 1, lambda_selection = "lambda.1se", seed = 123, repeats = 20, sample_fraction = 0.8) {
+write_l1_stability <- function(x, y, outdir, top_n = 50, l1_alpha = 1, lambda_selection = "lambda.1se", seed = 123, repeats = 50, sample_fraction = 0.8, top_var_n = 200, frequency_weight = 1, split_plan = NULL) {
   selected <- list()
+  performance <- vector("list", repeats)
+  split_plan <- split_plan %||% make_stability_split_plan(y, repeats, sample_fraction, seed + 2000)
   for (i in seq_len(repeats)) {
-    set.seed(seed + 2000 + i)
-    idx <- unlist(lapply(levels(y), function(cls) {
-      cls_idx <- which(y == cls)
-      sample(cls_idx, min(length(cls_idx), max(2, floor(length(cls_idx) * sample_fraction))), replace = FALSE)
-    }), use.names = FALSE)
-    y_sub <- droplevels(y[idx])
+    split <- split_plan[[i]]
+    train_x <- x[split$train, , drop = FALSE]
+    y_sub <- droplevels(y[split$train])
+    test_x <- x[split$test, , drop = FALSE]
+    test_y <- droplevels(y[split$test])
     if (min(table(y_sub)) < 2) next
+    train_var <- apply(train_x, 2, var, na.rm = TRUE)
+    train_var[!is.finite(train_var)] <- -Inf
+    keep <- order(train_var, decreasing = TRUE)[seq_len(min(top_var_n, ncol(train_x)))]
+    imputed <- impute_from_training(train_x[, keep, drop = FALSE], test_x[, keep, drop = FALSE])
     nfolds <- min(5, min(table(y_sub)))
     foldid <- make_stratified_foldid(y_sub, nfolds, seed + i)
-    fit <- glmnet::cv.glmnet(x[idx, , drop = FALSE], y_sub, family = "multinomial", alpha = l1_alpha, type.measure = "class", nfolds = nfolds, foldid = foldid)
+    fit <- glmnet::cv.glmnet(imputed$train, y_sub, family = "multinomial", alpha = l1_alpha, type.measure = "class", nfolds = nfolds, foldid = foldid, type.multinomial = "ungrouped")
+    pred <- as.vector(predict(fit, imputed$test, s = lambda_selection, type = "class"))
+    recalls <- diag(table(factor(test_y, levels = levels(y_sub)), factor(pred, levels = levels(y_sub)))) / rowSums(table(factor(test_y, levels = levels(y_sub)), factor(pred, levels = levels(y_sub))))
+    performance[[i]] <- data.frame(Resample = i, TrainSamples = length(split$train), TestSamples = length(split$test), Accuracy = mean(pred == test_y), BalancedAccuracy = mean(recalls, na.rm = TRUE), stringsAsFactors = FALSE)
     co <- coef(fit, s = lambda_selection)
     ids <- unique(unlist(lapply(co, function(m) rownames(as.matrix(m))[as.numeric(as.matrix(m)[, 1]) != 0]), use.names = FALSE))
     ids <- setdiff(ids, "(Intercept)")
-    selected[[i]] <- head(ids, top_n)
+    selected[[i]] <- ids
   }
   freq <- sort(table(unlist(selected, use.names = FALSE)) / repeats, decreasing = TRUE)
-  out <- data.frame(ProteinID = names(freq), SelectionFrequency = as.numeric(freq), Repeats = repeats, stringsAsFactors = FALSE)
+  if (length(freq) == 0) {
+    out <- data.frame(ProteinID = character(), SelectionFrequency = numeric(), L1SelectionFrequency = numeric(), StabilityScore = numeric(), Repeats = integer(), stringsAsFactors = FALSE)
+  } else {
+    out <- data.frame(ProteinID = names(freq), SelectionFrequency = as.numeric(freq), L1SelectionFrequency = as.numeric(freq) * frequency_weight, StabilityScore = as.numeric(freq) * frequency_weight, Repeats = repeats, stringsAsFactors = FALSE)
+  }
   data.table::fwrite(out, file.path(outdir, "l1_stability_selection.csv"))
+  data.table::fwrite(dplyr::bind_rows(performance), file.path(outdir, "l1_stability_resample_performance.csv"))
   invisible(out)
 }
 
-run_random_forest_selection <- function(mat, group_info, outdir, top_n = 50, rf_ntree = 500, seed = 123, split_mode = "auto", train_prop = 0.7, rf_mtry = NA, allow_small_sample = FALSE) {
+run_random_forest_selection <- function(mat, group_info, outdir, top_n = 50, rf_ntree = 500, seed = 123, split_mode = "auto", train_prop = 0.7, rf_mtry = NA, allow_small_sample = FALSE, stability_repeats = 50, stability_sample_fraction = 0.8, stability_top_var_n = 200, stability_top20_weight = 0.35, stability_top50_weight = 0.25, stability_gini_weight = 0.10, stability_split_plan = NULL) {
+  stability <- getOption("proteopostz.stability", list())$rf %||% list()
+  stability_repeats <- stability$repeats %||% stability_repeats
+  stability_sample_fraction <- stability$sample_fraction %||% stability_sample_fraction
+  stability_top_var_n <- stability$top_var_n %||% stability_top_var_n
+  stability_top20_weight <- stability$top20_weight %||% stability_top20_weight
+  stability_top50_weight <- stability$top50_weight %||% stability_top50_weight
+  stability_gini_weight <- stability$gini_weight %||% stability_gini_weight
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
   ml <- prepare_ml_input(mat, group_info)
   x <- ml$x
@@ -1665,7 +1735,8 @@ run_random_forest_selection <- function(mat, group_info, outdir, top_n = 50, rf_
   imp <- data.frame(ProteinID = rownames(imp_mat), RFImportance = imp_mat[, importance_col], row.names = NULL) |>
     dplyr::arrange(dplyr::desc(RFImportance))
   data.table::fwrite(imp, file.path(outdir, "random_forest_importance.csv"))
-  write_rf_stability(x[training$train, , drop = FALSE], droplevels(y[training$train]), outdir, top_n = top_n, rf_ntree = rf_ntree, mtry = mtry, seed = seed, repeats = 20)
+  stability_input <- prepare_stability_input(mat, group_info)
+  stability <- write_rf_stability(stability_input$x, stability_input$y, outdir, top_n = top_n, rf_ntree = rf_ntree, mtry = mtry, seed = seed, repeats = stability_repeats, sample_fraction = stability_sample_fraction, top_var_n = stability_top_var_n, top20_weight = stability_top20_weight, top50_weight = stability_top50_weight, gini_weight = stability_gini_weight, split_plan = stability_split_plan)
   write_ml_settings(outdir, list(
     Analysis = "Random forest",
     RandomSeed = seed,
@@ -1677,12 +1748,18 @@ run_random_forest_selection <- function(mat, group_info, outdir, top_n = 50, rf_
     RandomForestNtree = rf_ntree,
     RandomForestMtry = if (is.na(mtry)) "Auto" else mtry,
     Importance = importance_col,
+    StabilitySelectionRepeats = stability_repeats,
+    StabilitySampleFraction = stability_sample_fraction,
+    StabilityTopVarianceFeatures = stability_top_var_n,
+    StabilityTop20Weight = stability_top20_weight,
+    StabilityTop50Weight = stability_top50_weight,
+    StabilityGiniWeight = stability_gini_weight,
     EvaluationOutputs = "confusion_matrix, class_metrics, summary_metrics, ROC/AUC for binary groups, stability_selection",
     SmallSampleExploratoryML = allow_small_sample,
     ReliabilityNote = if (allow_small_sample) "Exploratory only: no independent test set; feature selection may be unstable." else "",
     AutoNote = training$auto_note %||% ""
   ))
-  top <- head(imp$ProteinID, min(top_n, nrow(imp)))
+  top <- head(stability$ProteinID, min(top_n, nrow(stability)))
   data.table::fwrite(data.frame(ProteinID = top), file.path(outdir, paste0("top", length(top), "_rf_features.csv")))
   write_matrix_csv(mat[top, , drop = FALSE], file.path(outdir, paste0("top", length(top), "_rf_feature_quantity_matrix.csv")))
   top
@@ -1716,7 +1793,12 @@ resolve_l1_folds <- function(y_train, requested = "Auto", allow_small_sample = F
   list(nfolds = nfolds, grouped = !allow_small_sample && fold_size >= 3)
 }
 
-run_l1_selection <- function(mat, group_info, outdir, top_n = 50, l1_alpha = 1, seed = 123, split_mode = "auto", train_prop = 0.7, lambda_selection = "lambda.1se", cv_folds = "Auto", allow_small_sample = FALSE) {
+run_l1_selection <- function(mat, group_info, outdir, top_n = 50, l1_alpha = 1, seed = 123, split_mode = "auto", train_prop = 0.7, lambda_selection = "lambda.1se", cv_folds = "Auto", allow_small_sample = FALSE, stability_repeats = 50, stability_sample_fraction = 0.8, stability_top_var_n = 200, stability_frequency_weight = 1, stability_split_plan = NULL) {
+  stability <- getOption("proteopostz.stability", list())$l1 %||% list()
+  stability_repeats <- stability$repeats %||% stability_repeats
+  stability_sample_fraction <- stability$sample_fraction %||% stability_sample_fraction
+  stability_top_var_n <- stability$top_var_n %||% stability_top_var_n
+  stability_frequency_weight <- stability$frequency_weight %||% stability_frequency_weight
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
   lambda_selection <- match.arg(lambda_selection, c("lambda.1se", "lambda.min"))
   ml <- prepare_ml_input(mat, group_info)
@@ -1753,8 +1835,9 @@ run_l1_selection <- function(mat, group_info, outdir, top_n = 50, l1_alpha = 1, 
     dplyr::summarise(L1Score = sum(abs(Coefficient)), NonzeroClasses = dplyr::n(), .groups = "drop") |>
     dplyr::arrange(dplyr::desc(L1Score))
   data.table::fwrite(scores, file.path(outdir, "l1_feature_scores.csv"))
-  write_l1_stability(x_train, y_train, outdir, top_n = top_n, l1_alpha = l1_alpha, lambda_selection = lambda_selection, seed = seed, repeats = 20)
-  top <- head(scores$ProteinID, min(top_n, nrow(scores)))
+  stability_input <- prepare_stability_input(mat, group_info)
+  stability <- write_l1_stability(stability_input$x, stability_input$y, outdir, top_n = top_n, l1_alpha = l1_alpha, lambda_selection = lambda_selection, seed = seed, repeats = stability_repeats, sample_fraction = stability_sample_fraction, top_var_n = stability_top_var_n, frequency_weight = stability_frequency_weight, split_plan = stability_split_plan)
+  top <- head(stability$ProteinID, min(top_n, nrow(stability)))
   data.table::fwrite(data.frame(ProteinID = top), file.path(outdir, paste0("top", length(top), "_l1_features.csv")))
   if (length(top) > 0) write_matrix_csv(mat[top, , drop = FALSE], file.path(outdir, paste0("top", length(top), "_l1_feature_quantity_matrix.csv")))
   write_ml_settings(outdir, list(
@@ -1770,6 +1853,10 @@ run_l1_selection <- function(mat, group_info, outdir, top_n = 50, l1_alpha = 1, 
     CrossValidationFolds = nfolds,
     RequestedCrossValidationFolds = cv_folds,
     GroupedCV = cv_settings$grouped,
+    StabilitySelectionRepeats = stability_repeats,
+    StabilitySampleFraction = stability_sample_fraction,
+    StabilityTopVarianceFeatures = stability_top_var_n,
+    StabilityFrequencyWeight = stability_frequency_weight,
     EvaluationOutputs = "confusion_matrix, class_metrics, summary_metrics, ROC/AUC for binary groups, stability_selection",
     SmallSampleExploratoryML = allow_small_sample,
     GlmnetWarnings = if (length(glmnet_warnings) > 0) paste(unique(glmnet_warnings), collapse = " | ") else "",
@@ -1779,12 +1866,38 @@ run_l1_selection <- function(mat, group_info, outdir, top_n = 50, l1_alpha = 1, 
   top
 }
 
-run_feature_selection <- function(mat, group_info, outdir, top_n = 50, rf_ntree = 500, l1_alpha = 1, seed = 123, split_mode = "auto", train_prop = 0.7, rf_mtry = NA, lambda_selection = "lambda.1se", cv_folds = "Auto", allow_small_sample = FALSE) {
-  rf_top <- run_random_forest_selection(mat, group_info, outdir, top_n, rf_ntree, seed, split_mode, train_prop, rf_mtry, allow_small_sample)
+run_feature_selection <- function(mat, group_info, outdir, top_n = 50, rf_ntree = 500, l1_alpha = 1, seed = 123, split_mode = "auto", train_prop = 0.7, rf_mtry = NA, lambda_selection = "lambda.1se", cv_folds = "Auto", allow_small_sample = FALSE, stability_repeats = 50, stability_sample_fraction = 0.8, stability_top_var_n = 200, stability_rf_top20_weight = 0.35, stability_rf_top50_weight = 0.25, stability_l1_weight = 0.30, stability_gini_weight = 0.10) {
+  stability <- getOption("proteopostz.stability", list())$rfl1 %||% list()
+  stability_repeats <- stability$repeats %||% stability_repeats
+  stability_sample_fraction <- stability$sample_fraction %||% stability_sample_fraction
+  stability_top_var_n <- stability$top_var_n %||% stability_top_var_n
+  stability_rf_top20_weight <- stability$rf_top20_weight %||% stability_rf_top20_weight
+  stability_rf_top50_weight <- stability$rf_top50_weight %||% stability_rf_top50_weight
+  stability_l1_weight <- stability$l1_weight %||% stability_l1_weight
+  stability_gini_weight <- stability$gini_weight %||% stability_gini_weight
+  prior_stability <- getOption("proteopostz.stability", list())
+  options(proteopostz.stability = list(
+    rf = list(repeats = stability_repeats, sample_fraction = stability_sample_fraction, top_var_n = stability_top_var_n),
+    l1 = list(repeats = stability_repeats, sample_fraction = stability_sample_fraction, top_var_n = stability_top_var_n)
+  ))
+  on.exit(options(proteopostz.stability = prior_stability), add = TRUE)
+  stability_input <- prepare_stability_input(mat, group_info)
+  shared_splits <- make_stability_split_plan(stability_input$y, stability_repeats, stability_sample_fraction, seed + 1000)
+  rf_top <- run_random_forest_selection(mat, group_info, outdir, top_n, rf_ntree, seed, split_mode, train_prop, rf_mtry, allow_small_sample, stability_repeats, stability_sample_fraction, stability_top_var_n, stability_rf_top20_weight, stability_rf_top50_weight, stability_gini_weight, shared_splits)
   if (length(rf_top) < 2) stop("RF + L1 combined requires at least 2 RF-selected candidate proteins before running the L1 stage.")
-  l1_top <- run_l1_selection(mat, group_info, outdir, top_n, l1_alpha, seed, split_mode, train_prop, lambda_selection, cv_folds, allow_small_sample)
-  top <- unique(c(rf_top, l1_top))[seq_len(min(length(unique(c(rf_top, l1_top))), top_n))]
-  data.table::fwrite(data.frame(ProteinID = top), file.path(outdir, paste0("top", length(top), "_rf_l1_union_features.csv")))
+  l1_top <- run_l1_selection(mat, group_info, outdir, top_n, l1_alpha, seed, split_mode, train_prop, lambda_selection, cv_folds, allow_small_sample, stability_repeats, stability_sample_fraction, stability_top_var_n, stability_l1_weight, shared_splits)
+  rf_stability <- data.table::fread(file.path(outdir, "random_forest_stability_selection.csv"), data.table = FALSE)
+  l1_stability <- data.table::fread(file.path(outdir, "l1_stability_selection.csv"), data.table = FALSE)
+  ids <- unique(c(rf_stability$ProteinID, l1_stability$ProteinID))
+  combined <- data.frame(ProteinID = ids, stringsAsFactors = FALSE) |>
+    dplyr::left_join(rf_stability[, c("ProteinID", "RFTop20Frequency", "RFTop50Frequency", "MeanDecreaseGiniScaled")], by = "ProteinID") |>
+    dplyr::left_join(l1_stability[, c("ProteinID", "L1SelectionFrequency")], by = "ProteinID") |>
+    dplyr::mutate(dplyr::across(-ProteinID, ~ tidyr::replace_na(.x, 0)), StabilityScore = stability_rf_top20_weight * RFTop20Frequency + stability_rf_top50_weight * RFTop50Frequency + stability_l1_weight * L1SelectionFrequency + stability_gini_weight * MeanDecreaseGiniScaled) |>
+    dplyr::arrange(dplyr::desc(StabilityScore), dplyr::desc(RFTop20Frequency), dplyr::desc(L1SelectionFrequency), dplyr::desc(MeanDecreaseGiniScaled))
+  data.table::fwrite(combined, file.path(outdir, "combined_stability_scores.csv"))
+  top <- head(combined$ProteinID, min(top_n, nrow(combined)))
+  data.table::fwrite(data.frame(ProteinID = top, CombinedRank = seq_along(top), stringsAsFactors = FALSE), file.path(outdir, paste0("top", length(top), "_rf_l1_union_features.csv")))
+  data.table::fwrite(data.frame(ProteinID = top, CombinedRank = seq_along(top), StabilityScore = combined$StabilityScore[match(top, combined$ProteinID)], stringsAsFactors = FALSE), file.path(outdir, "combined_feature_summary.csv"))
   if (length(top) > 0) write_matrix_csv(mat[top, , drop = FALSE], file.path(outdir, paste0("top", length(top), "_rf_l1_union_quantity_matrix.csv")))
   top
 }
