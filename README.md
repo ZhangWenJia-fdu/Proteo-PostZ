@@ -2,21 +2,26 @@
 
 ProteoPostZ, formerly ProteoDIAPostZ, is a Windows/R Shiny application for post-processing protein-level DIA and DDA proteomics results, as well as user-prepared standard quantitative matrices.
 
-**Latest release: ProteoPostZ Formal V2.0.2.**
+**Latest release: ProteoPostZ Formal V2.0.3.**
 
 ## Download the Windows portable application
 
-Download [`ProteoPostZ_v2.0.2_windows_x86_release.zip`](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.2) from the V2.0.2 Release Assets. 
+Download [`ProteoPostZ_v2.0.3_windows_x86_release.zip`](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.3) from the V2.0.3 Release Assets after the release is published.
+
+Expected portable-package name: `ProteoPostZ_v2.0.3_windows_x86_release.zip`.
 
 The GitHub-generated **Source code (zip)** and **Source code (tar.gz)** downloads contain source only; they are not the complete Windows portable application. Windows users should download the portable ZIP from Release Assets.
 
-## What's New in V2.0.2
+## What's New in V2.0.3
 
-- **PEAKS LFQ protein-result input.** Upload one PEAKS protein file at a time. The application detects PEAKS DB and PEAKS LFQ result schemas from their columns, retains DB compatibility, and supports PEAKS LFQ protein abundance as the recommended label-free quantitative input when an LFQ result is available.
-- **Sample correlation heatmap.** Sample ordering, hierarchical clustering, and layout controls have been refined.
-- **Expression and Feature-protein heatmaps.** Clustering and ordering controls, heatmap palettes, annotation colors, row labels, and output layout have been expanded.
+ProteoPostZ Formal V2.0.3 is a focused refinement of the three protein-level machine-learning feature-selection modules.
 
-See [RELEASE_NOTES_v2.0.2.md](RELEASE_NOTES_v2.0.2.md) for the concise V2.0.2 change record.
+- **Random forest, L1, and RF + L1.** All three modules now expose repeated stability selection, training-set proportion control, training-only variance prefiltering, configurable Top features, and model-performance/stability summaries.
+- **Random forest.** RF stability ranking combines top-20 frequency, top-50 frequency, and mean Gini according to user-configurable weights; tree number and `mtry` can be adjusted.
+- **L1.** L1 supports `alpha`, `lambda.1se`/`lambda.min`, automatic or manual cross-validation folds, multinomial modeling, and feature-selection frequency summaries.
+- **RF + L1.** RF and L1 use the same stratified train/test split within each stability repeat. The combined score uses RF top-20 frequency, RF top-50 frequency, L1 selection frequency, and mean Gini with configurable component weights.
+
+See [README_ML_parameters_v2.0.3_Bilingual.txt](README_ML_parameters_v2.0.3_Bilingual.txt) for the detailed bilingual parameter guide and [RELEASE_NOTES_v2.0.3.md](RELEASE_NOTES_v2.0.3.md) for the concise change record.
 
 ## Supported inputs
 
@@ -87,11 +92,11 @@ Four heatmap color schemes are provided: Blue–White–Red, Red–White–Blue,
 
 ### Machine-learning feature selection
 
-- **Random forest feature selection** ranks proteins by model importance (MeanDecreaseGini when available).
-- **L1 feature selection** supports LASSO or elastic-net behavior through `alpha`, with cross-validated `lambda.1se` or `lambda.min` selection.
-- **RF + L1 combined feature selection** exports the selected-feature union and its corresponding quantity matrix.
+- **Random forest feature selection** uses repeated stability selection. Each repeat uses a stratified training/test split, applies a training-set-only variance prefilter, fits the configured number of trees and `mtry`, and records top-20 frequency, top-50 frequency, mean Gini, feature rankings, and model-performance summaries.
+- **L1 feature selection** supports LASSO or elastic-net behavior through `alpha`, cross-validated `lambda.1se` or `lambda.min` selection, automatic/manual CV folds, multinomial modeling, selection frequency, and model-performance summaries.
+- **RF + L1 combined feature selection** uses one shared stratified split per stability repeat, combines RF top-20 frequency, RF top-50 frequency, L1 selection frequency, and mean Gini with configurable weights, and exports the selected-feature union and corresponding quantity matrix.
 
-The models support reproducible seeds, automatic/cross-validation-only/train-test modes, train proportion, and model-specific settings. Outputs include cross-validation predictions, confusion matrices, class metrics, and summary metrics; binary analyses additionally produce ROC/AUC when calculable. Stability-selection summaries are produced for RF and L1. Default strict mode requires adequate replication; optional small-sample mode is explicitly exploratory and should not be interpreted as independent validation.
+The models support reproducible seeds, cross-validation-only or stratified train/test modes, training proportion, repeated stability selection, training-only variance prefiltering, final Top features, and model-specific settings. Outputs include cross-validation predictions, confusion matrices, class metrics, summary metrics, stability-selection summaries, and resample-performance summaries; binary analyses additionally produce ROC/AUC when calculable. Default strict mode requires adequate replication; optional small-sample mode is explicitly exploratory and should not be interpreted as independent validation.
 
 ### Feature-protein analysis
 
@@ -111,87 +116,30 @@ Plot modules generate vector PDF output and can export the corresponding CSV dat
 
 Normal application use is offline. Internet access is only relevant when deliberately updating annotations or installing missing R packages.
 
----
-
-## Release Notes
+## Release notes
 
 ### ProteoPostZ Formal
 
-* [ProteoPostZ Formal Release V2.0.2](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.2)
-* [ProteoPostZ Formal Release V2.0.1](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.1)
-* [ProteoPostZ Formal Release V2.0](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.0)
+- [ProteoPostZ Formal Release V2.0.3](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.3)
+- [ProteoPostZ Formal Release V2.0.2](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.2)
+- [ProteoPostZ Formal Release V2.0.1](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.1)
+- [ProteoPostZ Formal Release V2.0](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.0)
 
 ### ProteoDIAPostZ Formal
 
-* [ProteoDIAPostZ Formal Release V1.4](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v1.4.0)
-* [ProteoDIAPostZ Formal Release V1.3](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v1.3.0)
+- [ProteoDIAPostZ Formal Release V1.4](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v1.4.0)
+- [ProteoDIAPostZ Formal Release V1.3](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v1.3.0)
 
 > **Version lineage:** ProteoPostZ is the continuation of ProteoDIAPostZ. The product was renamed beginning with V2.0 when support was expanded from DIA-focused workflows to DIA, DDA, and user-prepared standard quantitative matrices.
 
----
-
 ## 中文简要说明
 
-**ProteoPostZ Formal V2.0.2** 是一个基于 R/Shiny 的 Windows 蛋白质组学后处理软件，主要用于 **DIA、DDA 蛋白水平结果以及用户整理的标准定量矩阵**的后续统计分析与可视化。
+ProteoPostZ Formal V2.0.3 是基于 R/Shiny 的 Windows 蛋白质组学后处理软件，支持 DIA、DDA 和用户整理的标准定量矩阵。
 
-ProteoPostZ 原名 **ProteoDIAPostZ**。自 V2.0 起，软件的输入范围由 DIA 扩展至 DIA、DDA 和标准定量矩阵，因此正式更名为 ProteoPostZ，并延续原有版本体系。
+V2.0.3 主要优化三个机器学习模块：Random forest、L1 和 RF + L1 联合特征筛选。三个模块支持稳定性重复筛选、训练集比例、训练集方差预筛选、Top features 和模型表现汇总；RF + L1 在每次稳定性重复中使用同一套分层训练集/测试集拆分；L1 使用多分类 multinomial 建模并汇总特征筛选频率。
 
-### 支持的输入
+软件支持 DIA-NN、Spectronaut、FragPipe/MSFragger、PEAKS DB/LFQ、MaxQuant 和标准 CSV/TSV 定量矩阵，并提供相关性热图、表达热图、Feature-protein 热图、火山图、PCA、UMAP、t-SNE、ML-based Feature-protein 分析和 Slingshot 等功能。
 
-目前主要支持：
+机器学习模块的详细参数说明见 [README_ML_parameters_v2.0.3_Bilingual.txt](README_ML_parameters_v2.0.3_Bilingual.txt)。
 
-* **DIA-NN** 蛋白水平结果
-* **Spectronaut** 蛋白水平结果
-* **FragPipe/MSFragger** 蛋白水平结果
-* **PEAKS DB** protein result
-* **PEAKS LFQ** protein result
-* **MaxQuant** `proteinGroups.txt`
-* 用户整理的 CSV/TSV 标准定量矩阵
-
-对于 PEAKS，用户每次只需上传一个 protein result 文件。软件根据文件内部 column schema 自动识别 **PEAKS DB** 或 **PEAKS LFQ**，不依赖文件名判断。
-
-PEAKS DB 保留原有兼容模式，以 `Area <sample>` 作为样品定量值，并利用 sample-specific `Coverage(%)` 作为独立的样品水平鉴定证据。
-
-PEAKS LFQ 使用 `<sample> Area` 作为 PEAKS 输出的蛋白水平 LFQ 定量值，并自动排除 `Group N Area`、ratio/profile 等非样品定量字段。如果用户已经在 PEAKS 中完成 LFQ 分析，建议优先使用 LFQ protein result 进行后续定量分析。
-
-### 主要分析功能
-
-定性分析主要包括：
-
-* 样品蛋白鉴定数和定量数统计
-* Venn diagram
-* UpSet plot
-* 蛋白理化性质分析
-
-定量分析主要包括：
-
-* Pearson / Spearman 样品相关性热图
-* Rank-abundance plot
-* 组内 CV ridgeline
-* PCA
-* UMAP
-* t-SNE
-* Volcano plot
-* Expression heatmap
-* Random forest 特征筛选
-* L1 特征筛选
-* RF + L1 联合特征筛选
-* Feature-protein UMAP
-* Feature-protein heatmap
-* Slingshot pseudotime analysis
-
-V2.0.2 进一步优化了 **Sample correlation heatmap** 的样品排序和层次聚类设置，并扩展了 **Expression heatmap** 和 **Feature-protein heatmap** 的参数、颜色及输出布局选项。
-
-### 输出与离线使用
-
-各主要分析模块支持：
-
-* PDF 矢量图导出
-* 对应 CSV 数据导出
-* `analysis_manifest.json` 分析过程记录
-* `analysis_summary.html` 分析摘要
-
-完整 Windows portable package 已包含运行所需的 portable R、R packages 和内置 annotation tables，正常分析过程不需要互联网连接。
-
----
-
+软件支持 PDF 矢量图、CSV 数据、`analysis_manifest.json` 和 `analysis_summary.html` 导出，正常使用不需要联网。
