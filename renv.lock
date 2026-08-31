@@ -1,0 +1,38 @@
+{
+  "R": {
+    "Version": "4.5.1",
+    "Repositories": [{"Name": "CRAN", "URL": "https://cloud.r-project.org"}],
+    "Platform": "x86_64-w64-mingw32",
+    "Date": "2026-08-30"
+  },
+  "Packages": {
+    "data.table": {"Package":"data.table","Version":"1.18.2.1","Source":"Repository","Repository":"CRAN"},
+    "dplyr": {"Package":"dplyr","Version":"1.1.4","Source":"Repository","Repository":"CRAN"},
+    "tidyr": {"Package":"tidyr","Version":"1.3.1","Source":"Repository","Repository":"CRAN"},
+    "ggplot2": {"Package":"ggplot2","Version":"4.0.1","Source":"Repository","Repository":"CRAN"},
+    "pheatmap": {"Package":"pheatmap","Version":"1.0.13","Source":"Repository","Repository":"CRAN"},
+    "RColorBrewer": {"Package":"RColorBrewer","Version":"1.1.3","Source":"Repository","Repository":"CRAN"},
+    "VennDiagram": {"Package":"VennDiagram","Version":"1.8.2","Source":"Repository","Repository":"CRAN"},
+    "UpSetR": {"Package":"UpSetR","Version":"1.4.0","Source":"Repository","Repository":"CRAN"},
+    "ggridges": {"Package":"ggridges","Version":"0.5.7","Source":"Repository","Repository":"CRAN"},
+    "uwot": {"Package":"uwot","Version":"0.2.4","Source":"Repository","Repository":"CRAN"},
+    "randomForest": {"Package":"randomForest","Version":"4.7.1.2","Source":"Repository","Repository":"CRAN"},
+    "glmnet": {"Package":"glmnet","Version":"4.1.10","Source":"Repository","Repository":"CRAN"},
+    "Peptides": {"Package":"Peptides","Version":"2.4.6","Source":"Repository","Repository":"CRAN"},
+    "pdftools": {"Package":"pdftools","Version":"3.9.0","Source":"Repository","Repository":"CRAN"},
+    "tibble": {"Package":"tibble","Version":"3.3.0","Source":"Repository","Repository":"CRAN"},
+    "shiny": {"Package":"shiny","Version":"1.14.0","Source":"Repository","Repository":"CRAN"},
+    "bslib": {"Package":"bslib","Version":"0.9.0","Source":"Repository","Repository":"CRAN"},
+    "DT": {"Package":"DT","Version":"0.34.0","Source":"Repository","Repository":"CRAN"},
+    "slingshot": {"Package":"slingshot","Version":"2.16.0","Source":"Bioconductor","Repository":"Bioconductor"},
+    "SingleCellExperiment": {"Package":"SingleCellExperiment","Version":"1.30.1","Source":"Bioconductor","Repository":"Bioconductor"},
+    "S4Vectors": {"Package":"S4Vectors","Version":"0.46.0","Source":"Bioconductor","Repository":"Bioconductor"},
+    "limma": {"Package":"limma","Version":"3.64.3","Source":"Bioconductor","Repository":"Bioconductor"},
+    "grid": {"Package":"grid","Version":"4.5.1","Source":"R","Repository":null},
+    "grDevices": {"Package":"grDevices","Version":"4.5.1","Source":"R","Repository":null},
+    "graphics": {"Package":"graphics","Version":"4.5.1","Source":"R","Repository":null},
+    "stats": {"Package":"stats","Version":"4.5.1","Source":"R","Repository":null},
+    "utils": {"Package":"utils","Version":"4.5.1","Source":"R","Repository":null},
+    "tools": {"Package":"tools","Version":"4.5.1","Source":"R","Repository":null}
+  }
+}

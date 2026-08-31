@@ -62,3 +62,6 @@ analysis_summary.html
 
 # Local development handoff (kept outside GitHub)
 docs/codex_handoff_current.md
+
+# Per-machine development configuration
+config.local.ps1
