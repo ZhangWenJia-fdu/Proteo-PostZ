@@ -6,7 +6,7 @@ ProteoPostZ, formerly ProteoDIAPostZ, is a Windows/R Shiny application for post-
 
 ## Download the Windows portable application
 
-Download `ProteoPostZ_v2.1.0_windows_x86_release.zip` from the V2.1.0 Release Assets after the release is published.
+Download [ProteoPostZ_v2.1.0_windows_x86_release.zip](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.1.0) from the V2.1.0 Release Assets.
 
 Expected portable-package name: `ProteoPostZ_v2.1.0_windows_x86_release.zip`.
 
@@ -136,7 +136,7 @@ Normal application use is offline. Internet access is only relevant when deliber
 
 ### ProteoPostZ Formal
 
-- ProteoPostZ Formal Release V2.1.0
+- [ProteoPostZ Formal Release V2.1.0](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.1.0)
 - [ProteoPostZ Formal Release V2.0.3](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.3)
 - [ProteoPostZ Formal Release V2.0.2](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.2)
 - [ProteoPostZ Formal Release V2.0.1](https://github.com/ZhangWenJia-fdu/Proteo-PostZ/releases/tag/v2.0.1)
